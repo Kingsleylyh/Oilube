@@ -24,20 +24,23 @@ contract test {
 	mapping(string => mapping(bytes32 => productDetail)) products;
 	//the second level string is product name
 	mapping(string => mapping(string => uint)) productCounts;
-	mapping(string => mapping(string => bool)) productExists;
 
-	//if return false, output will register new product, actually no need
-	function NewInstance(string memory pName, string memory mName, address mAddress) public returns (bytes32)
+	function NewInstance(string memory pName, string memory mName, string memory location, address mAddress) public returns (bytes32)
 	{
 		productDetail memory pNew = productDetail(pName, block.timestamp, mAddress, false, new string[](0));
 		bytes32 idNew = keccak256(abi.encodePacked(pNew.productName, pNew.creationTime, (productCounts[mName][pName] + 1)));
 		products[mName][idNew] = pNew;
+		
 		productCounts[mName][pName]++;
 		return idNew;
 	}
 
-	function Accept(string memory mName, bytes32 pID, string memory acceptRole, string memory location, address acceptAddress) public returns (bool)
+	function Transfer(string memory mName, bytes32 pID, string memory acceptRole, string memory location, address acceptAddress) public returns (bool)
 	{
+	if (products[mName][pID].isDelivered)
+	{
+		return false;
+	}
 	if (isEqualString(acceptRole, "Consumer"))
 	{
 		products[mName][pID].currentHolder = acceptAddress;
@@ -45,7 +48,7 @@ contract test {
 		products[mName][pID].pathRecord.push(string.concat(acceptRole, location, "Accept", block.timestamp.toString()));
 		return true;
 	}
-	else if (isEqualString(acceptRole,"Middleman"))
+	else if (isEqualString(acceptRole, "Middleman"))
 	{
 		products[mName][pID].currentHolder = acceptAddress;
 		products[mName][pID].pathRecord.push(string.concat(acceptRole, location, "Accept", block.timestamp.toString()));
