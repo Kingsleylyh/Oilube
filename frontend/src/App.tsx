@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import './App.css';
 import Oilube from './abi/Oilube.json';
 
-const contractAddress = "0x35Ef82a8147F5a0F8e9c8a7A90ace3f3D9e476Da";
+const contractAddress = "0x72fCC9dc33F9e9ca5a6CeEc3692929dF656b8F25";
 
 
 declare global {
