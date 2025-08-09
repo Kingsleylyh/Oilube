@@ -1,0 +1,169 @@
+[
+  { "inputs": [], "stateMutability": "nonpayable", "type": "constructor" },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "mName",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "pName",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "creationTime",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "curHolder",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isDelivered",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "string[]",
+        "name": "path",
+        "type": "string[]"
+      }
+    ],
+    "name": "displayProductDetail",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "CheckID",
+    "outputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "bytes32", "name": "pID", "type": "bytes32" }],
+    "name": "CheckPath",
+    "outputs": [{ "internalType": "string[]", "name": "", "type": "string[]" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "add", "type": "address" }],
+    "name": "CheckRole",
+    "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "mAddress", "type": "address" },
+      { "internalType": "string", "name": "pName", "type": "string" }
+    ],
+    "name": "NewInstance",
+    "outputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "bytes32", "name": "pID", "type": "bytes32" }],
+    "name": "PayToView",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "string",
+            "name": "manufacturerName",
+            "type": "string"
+          },
+          { "internalType": "string", "name": "productName", "type": "string" },
+          {
+            "internalType": "uint256",
+            "name": "creationTime",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "currentHolder",
+            "type": "address"
+          },
+          { "internalType": "bool", "name": "isDelivered", "type": "bool" },
+          {
+            "internalType": "string[]",
+            "name": "pathRecord",
+            "type": "string[]"
+          }
+        ],
+        "internalType": "struct Oilube.productDetail",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "acceptAddress", "type": "address" },
+      { "internalType": "bytes32", "name": "pID", "type": "bytes32" },
+      { "internalType": "string", "name": "location", "type": "string" }
+    ],
+    "name": "Purchase",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "rAdd", "type": "address" },
+      { "internalType": "string", "name": "role", "type": "string" },
+      { "internalType": "string", "name": "name", "type": "string" },
+      { "internalType": "string", "name": "location", "type": "string" }
+    ],
+    "name": "Register",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "acceptAddress", "type": "address" },
+      { "internalType": "bytes32", "name": "pID", "type": "bytes32" }
+    ],
+    "name": "Transfer",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "Withdraw",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "fee",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  { "stateMutability": "payable", "type": "receive" }
+]
