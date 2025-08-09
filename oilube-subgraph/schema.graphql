@@ -1,12 +1,14 @@
-type displayProductDetail @entity(immutable: true) {
-  id: Bytes!
-  mName: String! # string
-  pName: String! # string
-  creationTime: BigInt! # uint256
-  curHolder: Bytes! # address
-  isDelivered: Boolean! # bool
-  path: [String!]! # string[]
+type Product @entity(immutable: true) {
+  id: ID!
+  mName: String!
+  pName: String!
+  creationTime: BigInt!
+  curHolder: Bytes!
+  isDelivered: Boolean!
+  path: [String!]!
+
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!
 }
+

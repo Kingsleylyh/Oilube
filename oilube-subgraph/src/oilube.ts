@@ -1,22 +1,22 @@
-import { displayProductDetail as displayProductDetailEvent } from "../generated/Oilube/Oilube"
-import { displayProductDetail } from "../generated/schema"
+import { displayProductDetail as DisplayProductDetailEvent } from "../generated/Oilube/Oilube"
+import { Product } from "../generated/schema"
+import { Bytes, BigInt } from "@graphprotocol/graph-ts"
 
-export function handledisplayProductDetail(
-  event: displayProductDetailEvent
-): void {
-  let entity = new displayProductDetail(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.mName = event.params.mName
-  entity.pName = event.params.pName
-  entity.creationTime = event.params.creationTime
-  entity.curHolder = event.params.curHolder
-  entity.isDelivered = event.params.isDelivered
-  entity.path = event.params.path
+export function handleDisplayProductDetail(event: DisplayProductDetailEvent): void {
+  // unique ID for entity combining tx hash and log index
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
 
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
+  let product = new Product(id)
+  product.mName = event.params.mName
+  product.pName = event.params.pName
+  product.creationTime = event.params.creationTime
+  product.curHolder = event.params.curHolder
+  product.isDelivered = event.params.isDelivered
+  product.path = event.params.path
 
-  entity.save()
+  product.blockNumber = event.block.number
+  product.blockTimestamp = event.block.timestamp
+  product.transactionHash = event.transaction.hash
+
+  product.save()
 }
