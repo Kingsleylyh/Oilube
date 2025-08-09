@@ -24,9 +24,22 @@ module.exports = {
     }
   },
   etherscan: {
-	apiKey: ETHERSCAN_API_KEY
+	apiKey: ETHERSCAN_API_KEY,
+	customChains: [
+      {
+        network: "opsepolia",
+        chainId: 11155420,
+        urls: {
+          apiURL: "https://api-sepolia-optimism.etherscan.io/api",
+          browserURL: "https://sepolia-optimism.etherscan.io/"
+        }
+      }
+    ]
   }
 };
+
+
+// config for testing in Ganache
 
 // const config: HardhatUserConfig = {
 //   solidity: "0.8.28",
