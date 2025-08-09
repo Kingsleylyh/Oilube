@@ -110,6 +110,14 @@ function App() {
     price: ''
   });
 
+  // State for transfer product functionality
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferForm, setTransferForm] = useState({
+    productId: '',
+    newLocation: '',
+    details: ''
+  });
+
   // Example history data
   const historyData = [
     {
@@ -177,25 +185,50 @@ const checkItemCode = async () => {
 
   // Function to check user role
   const checkUserRole = async (address: string) => {
-    if (!contract) return;
-    
     setIsLoadingRole(true);
     try {
-      const role = await contract.CheckRole(address);
-      console.log("User role from contract:", role);
-      
-      // Convert contract role to our UserRole type
-      let userRoleType: UserRole = 'none';
-      if (role.toLowerCase().includes('manufacturer')) {
-        userRoleType = 'manufacturer';
-      } else if (role.toLowerCase().includes('middleman')) {
-        userRoleType = 'middleman';
-      } else if (role.toLowerCase().includes('consumer')) {
-        userRoleType = 'consumer';
+      // First, try to get role from blockchain if contract is available
+      if (contract) {
+        try {
+          const role = await contract.CheckRole(address);
+          console.log("User role from contract:", role);
+          
+          // Convert contract role to our UserRole type
+          let userRoleType: UserRole = 'none';
+          if (role && role.toLowerCase().includes('manufacturer')) {
+            userRoleType = 'manufacturer';
+          } else if (role && role.toLowerCase().includes('middleman')) {
+            userRoleType = 'middleman';
+          } else if (role && role.toLowerCase().includes('consumer')) {
+            userRoleType = 'consumer';
+          }
+          
+          if (userRoleType !== 'none') {
+            setUserRole(userRoleType);
+            return userRoleType;
+          }
+        } catch (error) {
+          console.error("Error checking user role from blockchain:", error);
+        }
       }
       
-      setUserRole(userRoleType);
-      return userRoleType;
+      // If no role found on blockchain, check localStorage
+      const storedProfile = localStorage.getItem(`userProfile_${address}`);
+      if (storedProfile) {
+        try {
+          const profile: UserProfile = JSON.parse(storedProfile);
+          console.log("User role from localStorage:", profile.role);
+          setUserProfile(profile);
+          setUserRole(profile.role);
+          return profile.role;
+        } catch (error) {
+          console.error("Error parsing stored user profile:", error);
+        }
+      }
+      
+      // No role found anywhere
+      setUserRole('none');
+      return 'none';
     } catch (error) {
       console.error("Error checking user role:", error);
       setUserRole('none');
@@ -207,7 +240,7 @@ const checkItemCode = async () => {
 
   // Function to register user
   const registerUser = async () => {
-    if (!contract || !walletAddress) {
+    if (!walletAddress) {
       alert("Please connect your wallet first.");
       return;
     }
@@ -225,39 +258,56 @@ const checkItemCode = async () => {
         location: registrationForm.location
       });
 
-      const success = await contract.Register(
-        walletAddress,
-        registrationForm.role,
-        registrationForm.name,
-        registrationForm.location
-      );
+      // Check if user already has a role assigned
+      const currentRole = await checkUserRole(walletAddress);
+      
+      if (currentRole !== 'none' && contract) {
+        // User already has a role, try to register on blockchain
+        if (!contract) {
+          alert("Contract not available. Registration will be stored locally only.");
+        } else {
+          try {
+            const success = await contract.Register(
+              walletAddress,
+              registrationForm.role,
+              registrationForm.name,
+              registrationForm.location
+            );
 
-      if (success) {
-        console.log("User registered successfully!");
-        
-        // Update user profile
-        const newProfile: UserProfile = {
-          role: registrationForm.role,
-          name: registrationForm.name,
-          location: registrationForm.location,
-          address: walletAddress
-        };
-        
-        setUserProfile(newProfile);
-        setUserRole(registrationForm.role);
-        
-        // Close modal and reset form
-        setIsRegistrationModalOpen(false);
-        setRegistrationForm({
-          role: 'manufacturer',
-          name: '',
-          location: ''
-        });
-        
-        alert("Registration successful! Your role has been set to " + registrationForm.role);
-      } else {
-        alert("Registration failed. Please try again.");
+            if (!success) {
+              alert("Blockchain registration failed. Registration will be stored locally only.");
+            }
+          } catch (error) {
+            console.error("Error registering on blockchain:", error);
+            alert("Blockchain registration failed. Registration will be stored locally only.");
+          }
+        }
       }
+
+      // Store registration data locally regardless of blockchain status
+      const newProfile: UserProfile = {
+        role: registrationForm.role,
+        name: registrationForm.name,
+        location: registrationForm.location,
+        address: walletAddress
+      };
+      
+      // Save to localStorage
+      localStorage.setItem(`userProfile_${walletAddress}`, JSON.stringify(newProfile));
+      
+      // Update state
+      setUserProfile(newProfile);
+      setUserRole(registrationForm.role);
+      
+      // Close modal and reset form
+      setIsRegistrationModalOpen(false);
+      setRegistrationForm({
+        role: 'manufacturer',
+        name: '',
+        location: ''
+      });
+      
+      alert("Registration successful! Your role has been set to " + registrationForm.role);
       
     } catch (error) {
       console.error("Error registering user:", error);
@@ -290,6 +340,9 @@ const checkItemCode = async () => {
 
             const contractInstance = contract as OilubeInterface;
             setContract(contractInstance);
+            
+            // Check user role (this will also check localStorage)
+            await checkUserRole(walletAddress);
           }
         } catch (error) {
           console.error("Account access failed:", error);
@@ -309,6 +362,8 @@ const checkItemCode = async () => {
         setWalletAddress(null);
         setIsConnected(false);
         setContract(null);
+        setUserRole('none');
+        setUserProfile(null);
       } else {
         // User switched accounts
         connectWallet();
@@ -546,7 +601,7 @@ const checkItemCode = async () => {
 
     setOilProducts(demoProducts.filter(product => {
       if (role === 'manufacturer') return product.manufacturer === "Oil Factory Ltd";
-      if (role === 'middleman') return product.status === 'transferred';
+      if (role === 'middleman') return true; // Show all products for middlemen to transfer
       if (role === 'consumer') return product.status === 'purchased';
       return false;
     }));
@@ -681,7 +736,86 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
       alert("This action is only available for middleman accounts.");
       return;
     }
-    alert("Transfer product functionality will be implemented soon!");
+    setIsTransferModalOpen(true);
+  };
+
+  const handleSubmitTransfer = async () => {
+    if (!transferForm.productId.trim() || !transferForm.newLocation.trim()) {
+      alert("Please fill in product ID and new location.");
+      return;
+    }
+
+    try {
+      // Find the product by ID (check both local ID and blockchain ID)
+      let productToTransfer = oilProducts.find(p => 
+        p.id === transferForm.productId || p.blockchainId === transferForm.productId
+      );
+
+      if (!productToTransfer) {
+        alert("Product not found. Please check the product ID.");
+        return;
+      }
+
+      // Check if product is in manufactured status (can be transferred)
+      if (productToTransfer.status !== 'manufactured') {
+        alert("This product cannot be transferred. Only manufactured products can be transferred.");
+        return;
+      }
+
+      console.log("Transferring product:", productToTransfer);
+
+      // Update product details
+      const updatedProduct: OilProduct = {
+        ...productToTransfer,
+        location: transferForm.newLocation,
+        status: 'transferred' as const,
+        description: transferForm.details || productToTransfer.description,
+        pathRecord: [
+          ...(productToTransfer.pathRecord || []),
+          `${selectedDemoWallet?.name || 'Middleman'} - ${transferForm.newLocation}`
+        ]
+      };
+
+      // Update blockchain if contract is available
+      if (contract && productToTransfer.blockchainId) {
+        try {
+          console.log("Updating product on blockchain...");
+          const success = await contract.Transfer(walletAddress || selectedDemoWallet?.address || '', productToTransfer.blockchainId);
+          
+          if (!success) {
+            console.warn("Blockchain transfer failed, but continuing with local update");
+          }
+        } catch (error) {
+          console.error("Error updating blockchain:", error);
+          alert("Warning: Product transferred locally but blockchain update failed.");
+        }
+      }
+
+      // Update local state
+      const updatedProducts = oilProducts.map(p => 
+        p.id === productToTransfer!.id || p.blockchainId === productToTransfer!.blockchainId 
+          ? updatedProduct 
+          : p
+      );
+
+      setOilProducts(updatedProducts);
+
+      // Save to localStorage
+      if (walletAddress || selectedDemoWallet?.address) {
+        const address = walletAddress || selectedDemoWallet?.address;
+        localStorage.setItem(`oilProducts_${address}`, JSON.stringify(updatedProducts));
+      }
+
+      // Reset form and close modal
+      setTransferForm({ productId: '', newLocation: '', details: '' });
+      setIsTransferModalOpen(false);
+
+      alert(`✅ Product transferred successfully!\n\n📦 Product: ${updatedProduct.name}\n📍 New Location: ${updatedProduct.location}\n📝 Details: ${updatedProduct.description}\n🔄 Status: ${updatedProduct.status}`);
+
+    } catch (error) {
+      console.error("Error transferring product:", error);
+      alert("Failed to transfer product. Please try again.");
+    }
   };
 
   const handlePurchaseProduct = () => {
@@ -1208,6 +1342,66 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
             </div>
             <button onClick={handleSubmitProduct} className="submit-button">
               Create Product
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Transfer Product Modal */}
+      <div className={`transfer-modal ${isTransferModalOpen ? 'active' : ''}`}>
+        <div className="modal-content">
+          <div className="modal-header">
+            <h2>Transfer Product</h2>
+            <button className="close-btn" onClick={() => setIsTransferModalOpen(false)}>&times;</button>
+          </div>
+          <div className="transfer-form">
+            {/* Show available products for transfer */}
+            <div className="form-group">
+              <label>Available Products for Transfer:</label>
+              <div className="available-products">
+                {oilProducts.filter(p => p.status === 'manufactured').map((product) => (
+                  <div key={product.id} className="available-product-item" 
+                       onClick={() => setTransferForm({...transferForm, productId: product.id})}>
+                    <strong>{product.id}</strong> - {product.name} ({product.location})
+                  </div>
+                ))}
+                {oilProducts.filter(p => p.status === 'manufactured').length === 0 && (
+                  <div className="no-products">No manufactured products available for transfer.</div>
+                )}
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Product ID:</label>
+              <input
+                type="text"
+                placeholder="Enter product ID (e.g., OIL001) or blockchain ID"
+                value={transferForm.productId}
+                onChange={(e) => setTransferForm({ ...transferForm, productId: e.target.value })}
+                className="form-input"
+              />
+            </div>
+            <div className="form-group">
+              <label>New Location:</label>
+              <input
+                type="text"
+                placeholder="Enter new location (e.g., Singapore Warehouse)"
+                value={transferForm.newLocation}
+                onChange={(e) => setTransferForm({ ...transferForm, newLocation: e.target.value })}
+                className="form-input"
+              />
+            </div>
+            <div className="form-group">
+              <label>Transfer Details (optional):</label>
+              <textarea
+                placeholder="Enter additional details about the transfer (e.g., transportation method, expected arrival date)"
+                value={transferForm.details}
+                onChange={(e) => setTransferForm({ ...transferForm, details: e.target.value })}
+                className="form-input"
+                rows={3}
+              />
+            </div>
+            <button onClick={handleSubmitTransfer} className="submit-button">
+              Transfer Product
             </button>
           </div>
         </div>

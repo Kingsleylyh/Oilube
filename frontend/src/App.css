@@ -1506,3 +1506,128 @@ header {
     font-size: 1.5rem;
   }
 }
+
+/* Transfer Modal Styles */
+.transfer-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.transfer-modal.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.transfer-modal .modal-content {
+  background-color: white;
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  transform: translateY(20px);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.transfer-modal.active .modal-content {
+  transform: translateY(0);
+}
+
+.transfer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.transfer-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transfer-form label {
+  font-weight: 600;
+  color: var(--dark);
+  font-size: 14px;
+}
+
+.transfer-form .form-input {
+  padding: 12px;
+  border: 2px solid var(--light-gray);
+  border-radius: 8px;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.transfer-form .form-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
+.transfer-form textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.available-products {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--light-gray);
+  border-radius: 8px;
+  padding: 8px;
+  background-color: #f8f9fa;
+}
+
+.available-product-item {
+  padding: 8px 12px;
+  margin: 4px 0;
+  background-color: white;
+  border: 1px solid var(--light-gray);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.available-product-item:hover {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.no-products {
+  padding: 12px;
+  text-align: center;
+  color: var(--gray);
+  font-style: italic;
+}
+
+/* Responsive design for transfer modal */
+@media (max-width: 768px) {
+  .transfer-modal .modal-content {
+    max-width: 90vw;
+    margin: 20px;
+    padding: 20px;
+    max-height: 85vh;
+  }
+  
+  .available-products {
+    max-height: 120px;
+  }
+}
