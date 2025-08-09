@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import './App.css';
 import Oilube from './abi/Oilube.json';
+import { getProductById } from './subgraph';
+import ProducerCreate from './components/ProducerCreate';
 
 const contractAddress = "0x72fCC9dc33F9e9ca5a6CeEc3692929dF656b8F25";
 
@@ -133,7 +135,9 @@ function App() {
     name: '',
     description: '',
     location: '',
-    price: ''
+    price: '',
+    manufacturerAddress: '',
+    manufacturingDate: ''
   });
 
   // Theme state (light/dark)
@@ -218,37 +222,59 @@ const checkItemCode = async () => {
 
   try {
     setIsChecking(true);
-    // Try to ensure contract if signer exists
+    const rawId = searchTerm.trim();
+
+    // Manufacturer should not check products here
+    if (userRole === 'manufacturer') {
+      showToast('Manufacturers cannot use Check Product. Use Create Product instead.', 'error');
+      return;
+    }
+
+    // Middleman: fetch details without payment
+    if (userRole === 'middleman') {
+      try {
+        // Fallback: try contract path only
+        let pathRecord: string[] = [];
+        if (contract) {
+          try {
+            const chainPath = await contract.CheckPath(rawId);
+            if (Array.isArray(chainPath) && chainPath.length > 0) {
+              pathRecord = chainPath;
+            }
+          } catch {}
+        }
+        setItemDetails({
+          title: 'Product',
+          description: `Details fetched from chain path only.`,
+          price: '-',
+          path: pathRecord.length ? pathRecord.join(' -> ') : 'No path recorded yet'
+        });
+      } finally {
+        setIsChecking(false);
+      }
+      return;
+    }
+
+    // Consumer: require payment first
     if (!contract && signer) {
       const c = new ethers.Contract(contractAddress, Oilube.abi, signer) as OilubeInterface;
       setContract(c);
     }
-
-    const rawId = searchTerm.trim();
     const matched = oilProducts.find(p => p.id === rawId || p.blockchainId === rawId);
     const resolvedBlockchainId = matched?.blockchainId || rawId;
-
     let feeEth: string | undefined = undefined;
     try {
       if (contract) {
         const feeWeiFetched = await contract.fee();
         feeEth = ethers.formatEther(feeWeiFetched);
       }
-    } catch (_) {
-      feeEth = undefined;
-    }
-
-    setPendingCheck({
-      inputId: rawId,
-      resolvedBlockchainId,
-      feeEth
-    });
+    } catch {}
+    setPendingCheck({ inputId: rawId, resolvedBlockchainId, feeEth });
     setIsPayModalOpen(true);
   } catch (error) {
-    console.error("Error preparing pay-to-view:", error);
-    showToast('Unable to prepare payment. Please try again.', 'error');
-  }
-  finally {
+    console.error('Error preparing check:', error);
+    showToast('Unable to prepare. Please try again.', 'error');
+  } finally {
     setIsChecking(false);
   }
 };
@@ -277,13 +303,17 @@ const checkItemCode = async () => {
       const { path, feeWei } = await payAndFetchDetails(c as OilubeInterface, pendingCheck.resolvedBlockchainId);
       const feeEthDisplay = ethers.formatEther(feeWei);
 
+      // Subgraph not integrated in this build; show generic description
+      const title = 'Product Details';
+      const description = `Access granted via on-chain payment (${feeEthDisplay} ETH).`;
+
       setIsPayModalOpen(false);
       setPendingCheck(null);
       setItemDetails({
         path: path.length ? path.join(' -> ') : 'No path recorded yet',
-        description: `Access granted via on-chain payment (${feeEthDisplay} ETH).`,
+        description,
         price: `${feeEthDisplay} ETH`,
-        title: 'Product Details'
+        title
       });
       showToast('Payment successful. Details unlocked.', 'success');
     } catch (error) {
@@ -369,33 +399,28 @@ const checkItemCode = async () => {
         location: registrationForm.location
       });
 
-      // Check if user already has a role assigned
-      const currentRole = await checkUserRole(walletAddress);
-      
-      if (currentRole !== 'none' && contract) {
-        // User already has a role, try to register on blockchain
-        if (!contract) {
-          showToast('Contract not available. Registration will be stored locally only.', 'info');
-        } else {
-          try {
-            const success = await contract.Register(
-              walletAddress,
-              registrationForm.role,
-              registrationForm.name,
-              registrationForm.location
-            );
+      // Always try to register on blockchain if contract is available
+      if (contract) {
+        try {
+          const success = await contract.Register(
+            walletAddress,
+            registrationForm.role,
+            registrationForm.name,
+            registrationForm.location
+          );
 
-            if (!success) {
-              showToast('Blockchain registration failed. Registration will be stored locally only.', 'error');
-            }
-          } catch (error) {
-            console.error("Error registering on blockchain:", error);
+          if (!success) {
             showToast('Blockchain registration failed. Registration will be stored locally only.', 'error');
           }
+        } catch (error) {
+          console.error("Error registering on blockchain:", error);
+          showToast('Blockchain registration failed. Registration will be stored locally only.', 'error');
         }
+      } else {
+        showToast('Contract not available. Registration will be stored locally only.', 'info');
       }
 
-      // Store registration data locally regardless of blockchain status
+            // Store registration data locally
       const newProfile: UserProfile = {
         role: registrationForm.role,
         name: registrationForm.name,
@@ -403,34 +428,22 @@ const checkItemCode = async () => {
         address: walletAddress
       };
       
-      // Save to localStorage
+      // Save to localStorage (overwrite any existing profile)
       localStorage.setItem(`userProfile_${walletAddress}`, JSON.stringify(newProfile));
       
       // Update state
       setUserProfile(newProfile);
       setUserRole(registrationForm.role);
       
-      // Enable demo mode to show role-specific dashboard
-      setIsDemoMode(true);
-      
-      // Create a demo wallet equivalent for the registered user
-      const registeredWallet = {
-        address: walletAddress,
-        name: registrationForm.name,
-        role: registrationForm.role,
-        privateKey: undefined
-      };
-      setSelectedDemoWallet(registeredWallet);
-      
-      // Load demo data for the registered role
-      loadDemoData(registrationForm.role);
-      
-      // Load products from localStorage if any exist
+      // Load products from localStorage if any exist for this wallet
       if (walletAddress) {
         const storedProducts = localStorage.getItem(`oilProducts_${walletAddress}`);
         if (storedProducts) {
           const products = JSON.parse(storedProducts);
           setOilProducts(products);
+        } else {
+          // Load demo data for the registered role if no products exist
+          loadDemoData(registrationForm.role);
         }
       }
       
@@ -441,7 +454,7 @@ const checkItemCode = async () => {
         name: '',
         location: ''
       });
-      showToast(`Registration successful. Logged in as ${registrationForm.name} (${registrationForm.role}).`, 'success');
+      showToast(`Role registered successfully. Logged in as ${registrationForm.name} (${registrationForm.role}).`, 'success');
       
     } catch (error) {
       console.error("Error registering user:", error);
@@ -475,20 +488,12 @@ const checkItemCode = async () => {
             const contractInstance = contract as OilubeInterface;
             setContract(contractInstance);
             
-            // Check user role (this will also check localStorage)
-            const detectedRole = await checkUserRole(walletAddress);
-            
-            // If user has a role, load their products and show dashboard
-            if (detectedRole !== 'none') {
-              const storedProducts = localStorage.getItem(`oilProducts_${walletAddress}`);
-              if (storedProducts) {
-                const products = JSON.parse(storedProducts);
-                setOilProducts(products);
-              } else {
-                // Load demo data for their role if no products exist
-                loadDemoData(detectedRole);
-              }
-            }
+            // Don't auto-load role on page load - let user choose each time
+            setUserRole('none');
+            setUserProfile(null);
+            setIsDemoMode(false);
+            setSelectedDemoWallet(null);
+            setOilProducts([]);
           }
         } catch (error) {
           console.error("Account access failed:", error);
@@ -581,24 +586,11 @@ const checkItemCode = async () => {
           setContract(contractInstance);
           console.log("Contract instance created successfully");
           
-          // Check user role after connecting
-          const userRoleResult = await checkUserRole(walletAddress);
-          console.log("User role:", userRoleResult);
-          
-          // If user has a role, load their products
-          if (userRoleResult !== 'none') {
-            const storedProducts = localStorage.getItem(`oilProducts_${walletAddress}`);
-            if (storedProducts) {
-              const products = JSON.parse(storedProducts);
-              setOilProducts(products);
-            } else {
-              // Load demo data for their role if no products exist
-              loadDemoData(userRoleResult);
-            }
-          }
-          
-          // Close modal
+                    // Close modal
           setIsWalletModalOpen(false);
+          
+          // Always prompt for role registration on MetaMask connect
+          setIsRegistrationModalOpen(true);
           
           // Show success message
           showToast(`Connected: ${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`);
@@ -647,7 +639,10 @@ const checkItemCode = async () => {
     if (!isConnected) {
       setIsWalletModalOpen(true);
     } else {
-      disconnectWallet();
+      const confirmLogout = window.confirm('Do you want to disconnect your wallet?');
+      if (confirmLogout) {
+        disconnectWallet();
+      }
     }
   };
 
@@ -875,6 +870,12 @@ const checkItemCode = async () => {
     }
     
     console.log("Opening product modal...");
+    // Prefill manufacturer address and today's date
+    setProductForm(prev => ({
+      ...prev,
+      manufacturerAddress: walletAddress || prev.manufacturerAddress,
+      manufacturingDate: new Date().toISOString().slice(0, 10)
+    }));
     setIsProductModalOpen(true);
     // Modal opened
   };
@@ -884,7 +885,7 @@ const checkItemCode = async () => {
   const handleReceiveProduct = () => {
     const currentRole = selectedDemoWallet?.role || userRole;
     if (currentRole !== 'middleman') {
-      showToast('Only middleman accounts can receive products.', 'error');
+      showToast('Only middleman accounts can transfer products.', 'error');
       return;
     }
     if (!isConnected) {
@@ -936,13 +937,13 @@ const checkItemCode = async () => {
       // Try to update blockchain if contract is available and product exists
       if (contract && receiveForm.productId) {
         try {
-          console.log("Attempting to receive product on blockchain...");
+          console.log("Attempting to transfer product on blockchain...");
           const success = await contract.Transfer(currentWalletAddress || '', receiveForm.productId);
           
           if (!success) {
             console.warn("Blockchain transfer failed, but local storage updated");
           } else {
-            console.log("Product successfully received on blockchain");
+            console.log("Product successfully transferred on blockchain");
           }
         } catch (error) {
           console.error("Error updating blockchain:", error);
@@ -953,7 +954,7 @@ const checkItemCode = async () => {
       // Reset form and close modal
       setReceiveForm({ productId: '' });
       setIsReceiveModalOpen(false);
-      showToast('Product received successfully.', 'success');
+      showToast('Product transferred successfully.', 'success');
 
     } catch (error) {
       console.error("Error receiving product:", error);
@@ -1017,7 +1018,7 @@ const checkItemCode = async () => {
         console.log("Creating local product:", newProduct);
 
         setOilProducts(prev => [...prev, newProduct]);
-        setProductForm({ name: '', description: '', location: '', price: '' });
+        setProductForm({ name: '', description: '', location: '', price: '', manufacturerAddress: '', manufacturingDate: '' });
         setIsProductModalOpen(false);
         
         // Save to localStorage for persistence
@@ -1040,26 +1041,25 @@ const checkItemCode = async () => {
       console.log("Creating product on blockchain...");
       console.log("Contract methods available:", Object.getOwnPropertyNames(contract));
       
-      // Create a comprehensive product data string that includes all information
-      // This will be stored in the blockchain as the product name
-      const productData = {
-        name: productForm.name,
-        description: productForm.description,
-        location: productForm.location,
-        price: productForm.price,
-        manufacturer: selectedDemoWallet?.name || userProfile?.name || "Unknown Manufacturer",
-        timestamp: new Date().toISOString()
-      };
+      // Manufacturer address and manufacturing date are required
+      const mAddress = productForm.manufacturerAddress || walletAddress || '';
+      if (!mAddress) {
+        showToast('Manufacturer address is required.', 'error');
+        return;
+      }
+      if (!productForm.manufacturingDate) {
+        showToast('Manufacturing date is required.', 'error');
+        return;
+      }
+      // Encode minimal details into product name for chain storage
+      const productNameForBlockchain = `${productForm.name}|${productForm.manufacturingDate}`;
       
-      // Create a structured product name that includes all the data
-      const productNameForBlockchain = `${productForm.name}|${productForm.description}|${productForm.location}|${productForm.price}|${productData.manufacturer}|${productData.timestamp}`;
-      
-      console.log("Product data to be stored:", productData);
+      console.log("Product data to be stored (encoded):", productNameForBlockchain);
       console.log("Structured product name for blockchain:", productNameForBlockchain);
-      console.log("Attempting to call NewInstance with:", walletAddress, productNameForBlockchain);
+      console.log("Attempting to call NewInstance with:", mAddress, productNameForBlockchain);
       
       // Create product on blockchain using NewInstance with structured data
-      const productId = await contract.NewInstance(walletAddress, productNameForBlockchain);
+      const productId = await contract.NewInstance(mAddress, productNameForBlockchain);
       console.log("Raw product ID returned from blockchain:", productId);
       
       console.log("Product created on blockchain with ID:", productId);
@@ -1079,7 +1079,7 @@ const checkItemCode = async () => {
       };
 
       setOilProducts(prev => [...prev, newProduct]);
-      setProductForm({ name: '', description: '', location: '', price: '' });
+      setProductForm({ name: '', description: '', location: '', price: '', manufacturerAddress: '', manufacturingDate: '' });
       setIsProductModalOpen(false);
       
       // Save to localStorage for persistence
@@ -1101,6 +1101,13 @@ const checkItemCode = async () => {
       }
     }
   };
+
+  // Enforce wallet connection on load
+  useEffect(() => {
+    if (!isConnected) {
+      setIsWalletModalOpen(true);
+    }
+  }, [isConnected]);
 
   return (
     <div className="App">
@@ -1255,15 +1262,15 @@ const checkItemCode = async () => {
         
         <div className="container hero-container">
           <div className="hero-content">
-            <h1>Explore the <span>Blockchain</span> Like Never Before</h1>
-            <p>Discover, analyze, and interact with blockchain networks using our powerful explorer. Search transactions, view smart contracts, and track digital assets across multiple chains.</p>
+            <h1> Ensure <span>Products Safety</span> Within One Click</h1>
+            <p>Immutable, blockchain-based tracking of cooking oil products from manufacturer to consumer, ensuring complete transparency and tamper-proof records of ingredients, production dates, and supply chain journey.</p>
             
             <div className="features">
               <div className="feature">
                 <span>🔍</span> Real-time transaction tracking
               </div>
               <div className="feature">
-                <span>📊</span> Advanced analytics
+                <span>📊</span> Track Path Records
               </div>
               <div className="feature">
                 <span>🔐</span> Secure wallet integration
@@ -1545,7 +1552,15 @@ const checkItemCode = async () => {
             <h2>Create New Oil Product</h2>
             <button className="close-btn" onClick={() => setIsProductModalOpen(false)}>&times;</button>
           </div>
-          <div className="product-form">
+            {/* Swap form with ProducerCreate component */}
+            <div className="product-form">
+              {userRole === 'manufacturer' ? (
+                <ProducerCreate
+                  defaultManufacturerAddress={walletAddress}
+                  onClose={() => setIsProductModalOpen(false)}
+                />
+              ) : (
+                <>
             <div className="form-group">
               <label>Product Name:</label>
               <input
@@ -1589,6 +1604,8 @@ const checkItemCode = async () => {
             <button onClick={handleSubmitProduct} className="submit-button">
               Create Product
             </button>
+                </>
+              )}
           </div>
         </div>
       </div>
