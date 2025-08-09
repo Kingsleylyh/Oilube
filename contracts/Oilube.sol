@@ -126,6 +126,8 @@ contract Oilube {
         require(success, "Withdrawal failed");
     }
 
+	// the following is for testing purpose
+
 	function CheckID() public view returns (bytes32) 
 	{
 		return testing_lastPID;
