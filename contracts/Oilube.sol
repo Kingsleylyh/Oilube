@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.4.22 <0.9.0;
+pragma solidity ^0.8.20;
 
 import "node_modules/@openzeppelin/contracts/utils/Strings.sol";
 
-contract test {
+contract Oilube {
   string message;
   constructor() public 
   {
@@ -125,6 +125,8 @@ contract test {
         (bool success, ) = owner.call{value: balance}("");
         require(success, "Withdrawal failed");
     }
+
+	// the following is for testing purpose
 
 	function CheckID() public view returns (bytes32) 
 	{

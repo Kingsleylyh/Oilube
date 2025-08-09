@@ -1,12 +1,15 @@
 import { ethers } from "hardhat";
+const hre = require("hardhat");
 
 async function main() {
 
-  const test = await ethers.deployContract("test");
+  const Oilube = await hre.ethers.getContractFactory("Oilube");
+  
+ const oilube = await Oilube.deploy();
 
-  await test.waitForDeployment();
+  await oilube.waitForDeployment();
 
-  console.log(`Test deployed to ${test.target}`);
+  console.log(`Oilube deployed to ${oilube.target}`);
 }
 
 main().catch((error) => {
