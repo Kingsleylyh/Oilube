@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import './App.css';
+import Oilube from './abi/Oilube.json';
+
+const contractAddress = "0x35Ef82a8147F5a0F8e9c8a7A90ace3f3D9e476Da";
+
 
 declare global {
   interface Window {
@@ -8,7 +12,26 @@ declare global {
   }
 }
 
+interface OilubeCustomMethods {
+	CheckID: () => Promise<string>;
+	CheckRole: (address: string) => Promise<string>;
+	CheckPath: (pID: string) => Promise<string[]>;
+
+	Withdraw: () => Promise<ethers.TransactionResponse>;
+	Payment: () => Promise<ethers.TransactionResponse>;
+
+	Register: (address: string, role: string, name: string, location: string) => Promise<boolean>;
+	NewInstance: (address: string, pName: string) => Promise<string>;
+	Transfer: (address: string, pID: string) => Promise<boolean>;
+	Purchase: (address: string, pID: string, location: string) => Promise<boolean>
+}
+
+type OilubeInterface = ethers.Contract & OilubeCustomMethods;
+
 function App() {
+  const [contract, setContract] = useState<OilubeInterface | null>(null);
+
+  const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -53,10 +76,44 @@ function App() {
 
   // Check if wallet is already connected
   useEffect(() => {
-    if (window.ethereum && window.ethereum.selectedAddress) {
-      setWalletAddress(window.ethereum.selectedAddress);
-      setIsConnected(true);
-    }
+	const connectWallet = async () => {
+		if (window.ethereum)
+		{
+			try 
+			{
+				const provider = new ethers.BrowserProvider(window.ethereum);
+				const accounts = await provider.send("eth_requestAccounts", []);
+
+				if (accounts.length > 0)
+				{
+					const signer = await provider.getSigner();
+					const walletAddress = await signer.getAddress();
+
+					setSigner(signer);
+					setWalletAddress(walletAddress);
+
+					const contract = new ethers.Contract(
+						contractAddress,
+						Oilube.abi,
+						signer
+					);
+
+					const contractInstance = contract as OilubeInterface;
+					setContract(contractInstance);
+				}
+			}
+			catch (error)
+			{
+				console.error("Account access failed!")
+			}
+		}
+		else
+		{
+			console.error("Metamask not detected!");
+		}
+	}
+
+	connectWallet();
   }, []);
 
   const connectWithMetaMask = async () => {
