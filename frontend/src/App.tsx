@@ -114,7 +114,11 @@ function App() {
       <header>
         <div className="container header-container">
           <div className="logo">
-            <div className="logo-icon">O</div>
+            <img 
+              src={`${process.env.PUBLIC_URL}/oilube.jpg`} 
+              alt="Oilube Logo" 
+              className="logo-image" 
+            />
             <div className="logo-text">Oil<span>ube</span></div>
           </div>
           
