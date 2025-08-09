@@ -326,12 +326,15 @@ header {
 .modal-content {
   background-color: white;
   border-radius: 16px;
-  padding: 30px;
+  padding: 24px;
   width: 100%;
-  max-width: 450px;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   transform: translateY(20px);
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .wallet-modal.active .modal-content {
@@ -343,10 +346,15 @@ header {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
+  padding-bottom: 10px;
 }
 
 .modal-header h2 {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--dark);
 }
@@ -354,9 +362,22 @@ header {
 .close-btn {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: 28px;
   cursor: pointer;
   color: var(--gray);
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+  color: var(--dark);
 }
 
 .wallet-options {
@@ -1017,70 +1038,67 @@ header {
 
 /* Demo Wallet Styles */
 .demo-wallets-section {
-  margin-bottom: 30px;
-  padding: 20px;
-  background: linear-gradient(135deg, #f8fafc, #e2e8f0);
-  border-radius: 16px;
-  border: 2px solid var(--light-gray);
+  margin-bottom: 20px;
 }
 
 .demo-wallets-section h3 {
-  color: var(--dark);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  margin-bottom: 15px;
+  color: var(--dark);
+  margin-bottom: 12px;
   text-align: center;
 }
 
 .demo-wallets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .demo-wallet-card {
-  background: white;
-  border: 2px solid var(--light-gray);
-  border-radius: 12px;
-  padding: 20px;
-  cursor: pointer;
-  transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 12px;
+  padding: 12px;
+  border: 2px solid var(--light-gray);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: white;
 }
 
 .demo-wallet-card:hover {
   border-color: var(--primary);
+  background-color: rgba(79, 70, 229, 0.05);
   transform: translateY(-2px);
-  box-shadow: 0 8px 15px -3px rgba(79, 70, 229, 0.2);
 }
 
 .demo-wallet-icon {
-  font-size: 32px;
-  width: 50px;
-  height: 50px;
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
-  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary), #6366f1);
+  border-radius: 50%;
   color: white;
 }
 
 .demo-wallet-info h4 {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
+  margin-bottom: 4px;
   color: var(--dark);
-  margin-bottom: 5px;
 }
 
 .demo-wallet-role {
   font-size: 12px;
-  font-weight: 600;
   color: var(--primary);
-  text-transform: uppercase;
-  margin-bottom: 5px;
+  font-weight: 500;
+  text-transform: capitalize;
+  margin-bottom: 2px;
 }
 
 .demo-wallet-address {
@@ -1090,9 +1108,12 @@ header {
 }
 
 .wallet-divider {
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  margin: 30px 0;
+  margin: 20px 0;
+  position: relative;
 }
 
 .wallet-divider::before {
@@ -1103,13 +1124,58 @@ header {
   right: 0;
   height: 1px;
   background: var(--light-gray);
+  transform: translateY(-50%);
 }
 
 .wallet-divider span {
   background: white;
-  padding: 0 20px;
+  padding: 0 16px;
   color: var(--gray);
+  font-size: 14px;
+  font-weight: 500;
+  position: relative;
+  z-index: 1;
+}
+
+.wallet-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wallet-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid var(--light-gray);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: white;
+}
+
+.wallet-option:hover {
+  border-color: var(--primary);
+  background-color: rgba(79, 70, 229, 0.05);
+  transform: translateY(-2px);
+}
+
+.wallet-icon-lg {
+  font-size: 28px;
+  color: var(--primary);
+}
+
+.wallet-info h3 {
+  font-size: 16px;
   font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--dark);
+}
+
+.wallet-info p {
+  color: var(--gray);
+  font-size: 13px;
 }
 
 /* Role Dashboard Styles */
@@ -1387,6 +1453,36 @@ header {
   
   .products-section {
     padding: 20px;
+  }
+
+  /* Wallet Modal Responsive */
+  .wallet-modal .modal-content {
+    max-width: 90vw;
+    margin: 20px;
+    padding: 20px;
+    max-height: 85vh;
+  }
+
+  .modal-header h2 {
+    font-size: 18px;
+  }
+
+  .close-btn {
+    font-size: 24px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .demo-wallets-grid {
+    gap: 8px;
+  }
+
+  .demo-wallet-card {
+    padding: 10px;
+  }
+
+  .wallet-option {
+    padding: 14px;
   }
 }
 

@@ -1116,22 +1116,6 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
                 <p>Connect to your MetaMask Wallet</p>
               </div>
             </div>
-            
-            <div className="wallet-option">
-              <div className="wallet-icon-lg">🔷</div>
-              <div className="wallet-info">
-                <h3>WalletConnect</h3>
-                <p>Scan with WalletConnect to connect</p>
-              </div>
-            </div>
-            
-            <div className="wallet-option">
-              <div className="wallet-icon-lg">👛</div>
-              <div className="wallet-info">
-                <h3>Coinbase Wallet</h3>
-                <p>Connect to your Coinbase Wallet</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
