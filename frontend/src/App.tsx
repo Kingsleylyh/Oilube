@@ -3,8 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import './App.css';
 import Oilube from './abi/Oilube.json';
+import { getProductById } from './subgraph';
 
 const contractAddress = "0x72fCC9dc33F9e9ca5a6CeEc3692929dF656b8F25";
+// Minimal ABI for create product flow (from oilube-frontend)
+const OILUBE_CREATE_ABI = [
+  "function NewInstance(address mAddress, string pName) public returns (bytes32)",
+  "function CheckID() public view returns (bytes32)"
+];
 
 
 declare global {
@@ -69,14 +75,17 @@ function App() {
   const [userRole, setUserRole] = useState<UserRole>('none');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
-  const [isLoadingRole, setIsLoadingRole] = useState(false);
+  const [isLoadingRole, setIsLoadingRole] = useState(false); // used to show potential spinners later
   const [registrationForm, setRegistrationForm] = useState({
     role: 'manufacturer' as UserRole,
     name: '',
     location: ''
   });
-  const [itemValue, setItemValue] = useState<string | null>(null);
-  const [itemDetails, setItemDetails] = useState<{ path: string, description: string, price: string } | null>(null);
+  // legacy, not used
+  // const [itemValue, setItemValue] = useState<string | null>(null);
+  // legacy, not used
+  // const [itemValue, setItemValue] = useState<string | null>(null);
+  const [itemDetails, setItemDetails] = useState<{ path: string; description: string; price: string; title?: string } | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
   // Demo wallets configuration
@@ -334,6 +343,8 @@ const checkItemCode = async () => {
         window.ethereum.removeListener('chainChanged', handleChainChanged);
       }
     };
+  // Intentionally not including checkUserRole in deps to avoid re-run loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const connectWithMetaMask = async () => {
@@ -553,6 +564,7 @@ const checkItemCode = async () => {
   };
 
   // Function to parse product data from blockchain
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const parseProductDataFromBlockchain = (productNameFromBlockchain: string): Partial<OilProduct> | null => {
     try {
       // Split the product name by | to extract the stored data
@@ -611,6 +623,7 @@ const checkItemCode = async () => {
   };
 
   // Function to check product path from blockchain
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const checkProductPath = async (blockchainId: string) => {
     if (!contract) {
       console.log("Contract not available");
@@ -648,24 +661,27 @@ const checkItemCode = async () => {
       }
     }
 
-    const productDetails = `
-📦 Product Details
-==================
-Name: ${product.name}
-Description: ${product.description}
-Location: ${product.location}
-Manufacturer: ${product.manufacturer}
-Price: ${product.price}
-Status: ${product.status}
-Created: ${product.createdAt}
+    // Try to enrich from The Graph (non-blocking)
+    if (product.blockchainId) {
+      try {
+        const sg = await getProductById(product.blockchainId);
+        if (sg) {
+          // If subgraph returns path, prefer it for display
+          if (Array.isArray(sg.path) && sg.path.length > 0) {
+            pathRecord = sg.path;
+          }
+        }
+      } catch (e) {
+        console.warn('Subgraph lookup failed:', e);
+      }
+    }
 
-🔗 Supply Chain Path:
-${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recorded yet'}
-
-${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet stored on blockchain'}
-    `;
-    
-    alert(productDetails);
+    setItemDetails({
+      title: product.name,
+      description: `${product.description}\nLocation: ${product.location}\nManufacturer: ${product.manufacturer}\nStatus: ${product.status}\nCreated: ${product.createdAt}`,
+      price: product.price,
+      path: pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recorded yet'
+    });
   };
 
   const handleCreateProduct = () => {
@@ -704,65 +720,68 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
       return;
     }
 
+    // Always prefer oilube-frontend function for creation (merge logic)
     try {
-      console.log("Creating product on blockchain...");
-      
-      // Create a comprehensive product data string that includes all information
-      // This will be stored in the blockchain as the product name
-      const productData = {
-        name: productForm.name,
-        description: productForm.description,
-        location: productForm.location,
-        price: productForm.price,
-        manufacturer: selectedDemoWallet?.name || "Oil Factory Ltd",
-        timestamp: new Date().toISOString()
-      };
-      
-      // Create a structured product name that includes all the data
-      const productNameForBlockchain = `${productForm.name}|${productForm.description}|${productForm.location}|${productForm.price}|${productData.manufacturer}|${productData.timestamp}`;
-      
-      console.log("Product data to be stored:", productData);
-      console.log("Structured product name for blockchain:", productNameForBlockchain);
-      
-      // Create product on blockchain using NewInstance with structured data
-      const productId = await contract.NewInstance(walletAddress, productNameForBlockchain);
-      
-      console.log("Product created on blockchain with ID:", productId);
-      
-      // Create local product object with blockchain integration
+      if (!window.ethereum) throw new Error('MetaMask not available');
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+      const signerForCreate = await provider.getSigner();
+      const manufacturerAddress = walletAddress;
+      if (!manufacturerAddress) throw new Error('Wallet address not available');
+
+      const createContract = new ethers.Contract(contractAddress, OILUBE_CREATE_ABI, signerForCreate);
+      const tx = await (createContract as any).NewInstance(manufacturerAddress, productForm.name);
+      await tx.wait();
+      const newBlockchainId = await (createContract as any).CheckID();
+
       const newProduct: OilProduct = {
         id: `OIL${String(oilProducts.length + 1).padStart(3, '0')}`,
         name: productForm.name,
         description: productForm.description,
         location: productForm.location,
-        manufacturer: selectedDemoWallet?.name || "Oil Factory Ltd",
+        manufacturer: selectedDemoWallet?.name || userProfile?.name || 'Unknown Manufacturer',
         price: productForm.price,
-        status: "manufactured",
+        status: 'manufactured',
         createdAt: new Date().toISOString().split('T')[0],
-        blockchainId: productId,
-        pathRecord: [] // Will be populated when needed
+        blockchainId: newBlockchainId,
+        pathRecord: []
       };
 
       setOilProducts(prev => [...prev, newProduct]);
       setProductForm({ name: '', description: '', location: '', price: '' });
       setIsProductModalOpen(false);
-      
-      // Save to localStorage for persistence
       if (walletAddress) {
         const updatedProducts = [...oilProducts, newProduct];
         localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
       }
-      
-      alert(`✅ 产品创建成功！\n\n📋 产品详情：\n- 名称: ${productForm.name}\n- 描述: ${productForm.description}\n- 位置: ${productForm.location}\n- 价格: ${productForm.price}\n\n🔗 区块链信息：\n- 产品ID: ${productId}\n- 制造商: ${selectedDemoWallet?.name || "Oil Factory Ltd"}\n\n💾 所有数据已自动存储到区块链上！`);
-      
-    } catch (error) {
-      console.error("Error creating product on blockchain:", error);
-      
-      // Check if it's a role error
-      if (error instanceof Error && error.message.includes("Manufacturer")) {
-        alert("❌ 错误：只有制造商可以创建产品。请确保您使用的是制造商钱包连接。");
-      } else {
-        alert("❌ 在区块链上创建产品失败。请重试。\n\n错误详情：" + (error instanceof Error ? error.message : "未知错误"));
+      alert('Product created on-chain.');
+      return;
+    } catch (createErr) {
+      console.warn('Create via Oilube function failed, falling back locally:', createErr);
+      try {
+        const newProduct: OilProduct = {
+          id: `OIL${String(oilProducts.length + 1).padStart(3, '0')}`,
+          name: productForm.name,
+          description: productForm.description,
+          location: productForm.location,
+          manufacturer: selectedDemoWallet?.name || userProfile?.name || 'Unknown Manufacturer',
+          price: productForm.price,
+          status: 'manufactured',
+          createdAt: new Date().toISOString().split('T')[0],
+          blockchainId: undefined,
+          pathRecord: []
+        };
+        setOilProducts(prev => [...prev, newProduct]);
+        setProductForm({ name: '', description: '', location: '', price: '' });
+        setIsProductModalOpen(false);
+        if (walletAddress) {
+          const updatedProducts = [...oilProducts, newProduct];
+          localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
+        }
+        alert('Product created locally (fallback).');
+      } catch (localErr) {
+        console.error('Local create failed:', localErr);
+        alert('Failed to create product locally. Please try again.');
       }
     }
   };

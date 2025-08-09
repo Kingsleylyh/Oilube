@@ -1,0 +1,10 @@
+import { GraphQLClient } from 'graphql-request';
+
+// NOTE: replace with env if needed
+const SUBGRAPH_URL = 'https://api.studio.thegraph.com/query/118186/oilubee/v.0.0.2';
+
+const graphClient = new GraphQLClient(SUBGRAPH_URL);
+
+export default graphClient;
+
+
