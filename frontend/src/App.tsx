@@ -93,7 +93,7 @@ function App() {
     location: ''
   });
   const [itemValue, setItemValue] = useState<string | null>(null);
-  const [itemDetails, setItemDetails] = useState<{ path: string, description: string, price: string } | null>(null);
+  const [itemDetails, setItemDetails] = useState<{ path: string; description: string; price: string; title?: string } | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
   // State for confirm pay-to-view flow
@@ -136,6 +136,34 @@ function App() {
     price: ''
   });
 
+  // Theme state (light/dark)
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('theme') === 'dark';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const theme = isDarkMode ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem('theme', theme);
+    } catch {}
+  }, [isDarkMode]);
+
+  // Toast notifications
+  type ToastType = 'success' | 'error' | 'info';
+  interface ToastItem { id: number; message: string; type: ToastType }
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const showToast = (message: string, type: ToastType = 'info', durationMs = 3200) => {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts(prev => [...prev, { id, message, type }]);
+    window.setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, durationMs);
+  };
 
 
   // State for receive product functionality (middleman)
@@ -184,11 +212,12 @@ function App() {
 // Function to check the item code
 const checkItemCode = async () => {
   if (!searchTerm.trim()) {
-    alert("Please enter an Item Code.");
+    showToast('Please enter an Item Code.', 'error');
     return;
   }
 
   try {
+    setIsChecking(true);
     // Try to ensure contract if signer exists
     if (!contract && signer) {
       const c = new ethers.Contract(contractAddress, Oilube.abi, signer) as OilubeInterface;
@@ -217,7 +246,10 @@ const checkItemCode = async () => {
     setIsPayModalOpen(true);
   } catch (error) {
     console.error("Error preparing pay-to-view:", error);
-    alert("Unable to prepare payment. Please try again.");
+    showToast('Unable to prepare payment. Please try again.', 'error');
+  }
+  finally {
+    setIsChecking(false);
   }
 };
 
@@ -250,11 +282,13 @@ const checkItemCode = async () => {
       setItemDetails({
         path: path.length ? path.join(' -> ') : 'No path recorded yet',
         description: `Access granted via on-chain payment (${feeEthDisplay} ETH).`,
-        price: `${feeEthDisplay} ETH`
+        price: `${feeEthDisplay} ETH`,
+        title: 'Product Details'
       });
+      showToast('Payment successful. Details unlocked.', 'success');
     } catch (error) {
       console.error("Payment failed:", error);
-      alert("Payment failed. Please try again.");
+      showToast('Payment failed. Please try again.', 'error');
     } finally {
       setIsPaying(false);
     }
@@ -318,12 +352,12 @@ const checkItemCode = async () => {
   // Function to register user
   const registerUser = async () => {
     if (!walletAddress) {
-      alert("Please connect your wallet first.");
+      showToast('Please connect your wallet first.', 'error');
       return;
     }
 
     if (!registrationForm.name.trim() || !registrationForm.location.trim()) {
-      alert("Please fill in all fields.");
+      showToast('Please fill in all fields.', 'error');
       return;
     }
 
@@ -341,7 +375,7 @@ const checkItemCode = async () => {
       if (currentRole !== 'none' && contract) {
         // User already has a role, try to register on blockchain
         if (!contract) {
-          alert("Contract not available. Registration will be stored locally only.");
+          showToast('Contract not available. Registration will be stored locally only.', 'info');
         } else {
           try {
             const success = await contract.Register(
@@ -352,11 +386,11 @@ const checkItemCode = async () => {
             );
 
             if (!success) {
-              alert("Blockchain registration failed. Registration will be stored locally only.");
+              showToast('Blockchain registration failed. Registration will be stored locally only.', 'error');
             }
           } catch (error) {
             console.error("Error registering on blockchain:", error);
-            alert("Blockchain registration failed. Registration will be stored locally only.");
+            showToast('Blockchain registration failed. Registration will be stored locally only.', 'error');
           }
         }
       }
@@ -407,12 +441,11 @@ const checkItemCode = async () => {
         name: '',
         location: ''
       });
-      
-      alert(`✅ Registration successful!\n\nYou are now logged in as: ${registrationForm.name}\nRole: ${registrationForm.role}\n\nYou will now see your role-specific dashboard with available functions.`);
+      showToast(`Registration successful. Logged in as ${registrationForm.name} (${registrationForm.role}).`, 'success');
       
     } catch (error) {
       console.error("Error registering user:", error);
-      alert("Failed to register user. Please try again.");
+      showToast('Failed to register user. Please try again.', 'error');
     }
   };
 
@@ -568,7 +601,7 @@ const checkItemCode = async () => {
           setIsWalletModalOpen(false);
           
           // Show success message
-          alert(`Successfully connected with MetaMask!\nAddress: ${walletAddress}\nRole: ${userRoleResult === 'none' ? 'Not registered' : userRoleResult}`);
+          showToast(`Connected: ${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`);
         } else {
           throw new Error("No accounts found");
         }
@@ -579,20 +612,20 @@ const checkItemCode = async () => {
         // Provide more specific error messages
         if (error instanceof Error) {
           if (error.message.includes("User rejected") || error.message.includes("user rejected")) {
-            alert("Connection was rejected. Please try again and approve the connection in MetaMask.");
+            showToast('Connection was rejected in MetaMask.', 'error');
           } else if (error.message.includes("No accounts found")) {
-            alert("No accounts found. Please make sure you have accounts in MetaMask.");
+            showToast('No accounts found in MetaMask.', 'error');
           } else if (error.message.includes("MetaMask is not installed")) {
-            alert("MetaMask is not installed! Please install it to use this feature.");
+            showToast('MetaMask is not installed. Redirecting to install page...', 'info');
           } else {
-            alert(`Failed to connect to MetaMask: ${error.message}`);
+            showToast(`Failed to connect: ${error.message}`, 'error');
           }
         } else {
-          alert("Failed to connect to MetaMask. Please try again.");
+          showToast('Failed to connect to MetaMask. Please try again.', 'error');
         }
       }
     } else {
-      alert("MetaMask is not installed! Please install it to use this feature.");
+      showToast('MetaMask is not installed! Opening install page...', 'info');
       window.open('https://metamask.io/download.html', '_blank');
     }
   };
@@ -607,7 +640,7 @@ const checkItemCode = async () => {
     setIsDemoMode(false);
     setSelectedDemoWallet(null);
     setOilProducts([]);
-    alert("Wallet disconnected successfully.");
+    showToast('Wallet disconnected.', 'info');
   };
 
   const handleWalletConnect = () => {
@@ -634,10 +667,10 @@ const checkItemCode = async () => {
 
   const handleConsumerAction = () => {
     if (!contract || !walletAddress) {
-      alert("Please connect your wallet first.");
+      showToast('Please connect your wallet first.', 'error');
       return;
     }
-    alert("Consumer action: Purchase product. This feature will be implemented soon!");
+    showToast('Purchase product feature coming soon.', 'info');
   };
 
   // Demo wallet functions
@@ -669,11 +702,11 @@ const checkItemCode = async () => {
         await loadProductsFromBlockchain();
       }
       
-      alert(`Connected to demo wallet: ${demoWallet.name}\nRole: ${demoWallet.role}`);
+      showToast(`Demo wallet: ${demoWallet.name} (${demoWallet.role})`, 'success');
       
     } catch (error) {
       console.error("Error connecting demo wallet:", error);
-      alert("Failed to connect demo wallet.");
+      showToast('Failed to connect demo wallet.', 'error');
     }
   };
 
@@ -801,7 +834,7 @@ const checkItemCode = async () => {
   // Function to view product details and blockchain path
   const viewProductDetails = async (product: OilProduct) => {
     if (!product) {
-      alert("Product not found.");
+      showToast('Product not found.', 'error');
       return;
     }
 
@@ -814,27 +847,17 @@ const checkItemCode = async () => {
         pathRecord = path || [];
       } catch (error) {
         console.error("Payment required to view product details:", error);
-        alert("Payment required to view this product's details. Please try again.");
+        showToast("Payment required to view this product's details. Please try again.", 'error');
         return;
       }
     }
 
-    const productDetails = `
-📦 Product Details
-==================
-Name: ${product.name}
-Description: ${product.description}
-Location: ${product.location}
-Manufacturer: ${product.manufacturer}
-Price: ${product.price}
-Status: ${product.status}
-Created: ${product.createdAt}
-
-🔗 Supply Chain Path:
-${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recorded yet'}
-    `;
-    
-    alert(productDetails);
+    setItemDetails({
+      title: product.name,
+      description: `${product.description}\nLocation: ${product.location}\nManufacturer: ${product.manufacturer}\nStatus: ${product.status}\nCreated: ${product.createdAt}`,
+      price: product.price,
+      path: pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recorded yet'
+    });
   };
 
   const handleCreateProduct = () => {
@@ -843,17 +866,17 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
     console.log("Current role:", currentRole);
     
     if (currentRole !== 'manufacturer') {
-      alert("This action is only available for manufacturer accounts.");
+      showToast('Only manufacturers can create products.', 'error');
       return;
     }
     if (!isConnected) {
-      alert("Please connect your wallet first.");
+      showToast('Please connect your wallet first.', 'error');
       return;
     }
     
     console.log("Opening product modal...");
     setIsProductModalOpen(true);
-    alert("Product creation modal should now be open!"); // Debug alert
+    // Modal opened
   };
 
 
@@ -861,11 +884,11 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
   const handleReceiveProduct = () => {
     const currentRole = selectedDemoWallet?.role || userRole;
     if (currentRole !== 'middleman') {
-      alert("This action is only available for middleman accounts.");
+      showToast('Only middleman accounts can receive products.', 'error');
       return;
     }
     if (!isConnected) {
-      alert("Please connect your wallet first.");
+      showToast('Please connect your wallet first.', 'error');
       return;
     }
     setIsReceiveModalOpen(true);
@@ -873,7 +896,7 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
 
   const handleSubmitReceive = async () => {
     if (!receiveForm.productId.trim()) {
-      alert("Please enter a product ID.");
+      showToast('Please enter a product ID.', 'error');
       return;
     }
 
@@ -930,12 +953,11 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
       // Reset form and close modal
       setReceiveForm({ productId: '' });
       setIsReceiveModalOpen(false);
-
-      alert(`✅ Product received successfully!\n\n📦 Product ID: ${receiveForm.productId}\n👤 Received by: ${currentUserProfile.name}\n📍 Wallet Address: ${currentWalletAddress}\n🏢 Role: ${currentUserProfile.role}\n📍 Location: ${currentUserProfile.location}\n\n💾 All data has been stored locally and includes your complete user details.`);
+      showToast('Product received successfully.', 'success');
 
     } catch (error) {
       console.error("Error receiving product:", error);
-      alert("Failed to receive product. Please try again.");
+      showToast('Failed to receive product. Please try again.', 'error');
     }
   };
 
@@ -944,24 +966,23 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
   const handlePurchaseProduct = () => {
     const currentRole = selectedDemoWallet?.role || userRole;
     if (currentRole !== 'consumer') {
-      alert("This action is only available for consumer accounts.");
+      showToast('Only consumers can purchase products.', 'error');
       return;
     }
     if (!isConnected) {
-      alert("Please connect your wallet first.");
+      showToast('Please connect your wallet first.', 'error');
       return;
     }
-    alert("Purchase product functionality will be implemented soon!");
+    showToast('Purchase product feature coming soon.', 'info');
   };
 
   const handleSubmitProduct = async () => {
-    alert("Create Product button clicked!"); // Debug alert
     console.log("handleSubmitProduct called");
     console.log("Product form data:", productForm);
     
     if (!productForm.name.trim() || !productForm.description.trim() || 
         !productForm.location.trim() || !productForm.price.trim()) {
-      alert("Please fill in all fields.");
+      showToast('Please fill in all fields.', 'error');
       return;
     }
 
@@ -970,7 +991,7 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
     console.log("Wallet address:", walletAddress);
 
     if (!walletAddress) {
-      alert("Please connect your wallet first.");
+      showToast('Please connect your wallet first.', 'error');
       return;
     }
 
@@ -1005,12 +1026,12 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
           localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
         }
         
-        alert(`✅ Product Created Successfully (Local Only)!\n\n📋 Product Details:\n- Name: ${productForm.name}\n- Description: ${productForm.description}\n- Location: ${productForm.location}\n- Price: ${productForm.price}\n- Manufacturer: ${newProduct.manufacturer}\n\n⚠️ Note: Product created locally. Blockchain connection not available.`);
+        showToast('Product created locally.', 'success');
         
         return;
       } catch (error) {
         console.error("Error creating local product:", error);
-        alert("Failed to create product locally. Please try again.");
+        showToast('Failed to create product locally. Please try again.', 'error');
         return;
       }
     }
@@ -1067,16 +1088,16 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
         localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
       }
       
-      alert(`✅ Product Created Successfully!\n\n📋 Product Details:\n- Name: ${productForm.name}\n- Description: ${productForm.description}\n- Location: ${productForm.location}\n- Price: ${productForm.price}\n\n🔗 Blockchain Information:\n- Product ID: ${productId}\n- Manufacturer: ${selectedDemoWallet?.name || userProfile?.name || "Unknown Manufacturer"}\n\n💾 All data has been automatically stored on the blockchain!`);
+      showToast('Product created on-chain successfully.', 'success');
       
     } catch (error) {
       console.error("Error creating product on blockchain:", error);
       
       // Check if it's a role error
       if (error instanceof Error && error.message.includes("Manufacturer")) {
-        alert("❌ Error: Only manufacturers can create products. Please ensure you are using a manufacturer wallet connection.");
+        showToast('Only manufacturers can create products.', 'error');
       } else {
-        alert("❌ Failed to create product on blockchain. Please try again.\n\nError details: " + (error instanceof Error ? error.message : "Unknown error"));
+        showToast('Failed to create product on blockchain. Please try again.', 'error');
       }
     }
   };
@@ -1108,11 +1129,11 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
               {isChecking ? 'Checking...' : 'Check Product'}
             </button>
           </div>
-          {itemDetails && (
+      {itemDetails && (
             <div className="modal-overlay" onClick={() => setItemDetails(null)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setItemDetails(null)} className="close-btn">&times;</button>
-                <h2>Product Details</h2>
+            <h2>{itemDetails.title || 'Product Details'}</h2>
                 <div className="product-details">
                   <p><strong>Path:</strong> {itemDetails.path}</p>
                   <p><strong>Description:</strong> {itemDetails.description}</p>
@@ -1205,6 +1226,23 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
                   : 'Connect Wallet'
                 }
               </span>
+            </button>
+            <button 
+              className="theme-toggle-btn"
+              onClick={() => setIsDarkMode(prev => !prev)}
+              title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDarkMode ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                </svg>
+              )}
             </button>
           </div>
         </div>
@@ -1587,6 +1625,15 @@ ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recor
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Toasts */}
+      <div className="toast-container">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast ${t.type}`}>
+            {t.message}
+          </div>
+        ))}
       </div>
     </div>
   );
