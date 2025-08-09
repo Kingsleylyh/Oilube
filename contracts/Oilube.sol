@@ -15,7 +15,7 @@ contract Oilube {
 
 	address public owner;
 
-	uint256 public constant fee = 0.01 ether;
+	uint256 public constant fee = 0.0000025 ether;
 
 	using Strings for string;
 	using Strings for uint256;
@@ -84,6 +84,15 @@ contract Oilube {
 			products[idNew] = pNew;
 			productCounts[accounts[mAddress].name][pName]++;
 			testing_lastPID = idNew;
+
+			productDetail memory temp = products[idNew];
+			emit displayProductDetail(temp.manufacturerName, 
+			temp.productName, 
+			temp.creationTime, 
+			temp.currentHolder, 
+			temp.isDelivered, 
+			temp.pathRecord);
+
 			return idNew;
 		}
 	}
