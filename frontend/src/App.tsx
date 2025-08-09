@@ -19,6 +19,8 @@ interface OilubeCustomMethods {
 	CheckPath: (pID: string) => Promise<string[]>;
 
 	Withdraw: () => Promise<ethers.TransactionResponse>;
+	PayToView: (pID: string, overrides?: any) => Promise<ethers.TransactionResponse>;
+	fee: () => Promise<bigint>;
 
 	Register: (address: string, role: string, name: string, location: string) => Promise<boolean>;
 	NewInstance: (address: string, pName: string) => Promise<string>;
@@ -57,6 +59,21 @@ interface OilProduct {
   pathRecord?: string[]; // Store the blockchain path record
 }
 
+// Pay to view helper
+const payAndFetchDetails = async (
+  contract: OilubeInterface,
+  pID: string
+): Promise<{ path: string[]; feeWei: bigint }> => {
+  // Get viewing fee
+  const requiredFee = await contract.fee();
+  // Pay to view
+  const tx = await contract.PayToView(pID, { value: requiredFee });
+  await tx.wait();
+  // Fetch path
+  const path = await contract.CheckPath(pID);
+  return { path, feeWei: requiredFee };
+};
+
 function App() {
   const [contract, setContract] = useState<OilubeInterface | null>(null);
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
@@ -78,6 +95,15 @@ function App() {
   const [itemValue, setItemValue] = useState<string | null>(null);
   const [itemDetails, setItemDetails] = useState<{ path: string, description: string, price: string } | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+
+  // State for confirm pay-to-view flow
+  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [pendingCheck, setPendingCheck] = useState<{
+    inputId: string;
+    resolvedBlockchainId: string;
+    feeEth?: string;
+  } | null>(null);
 
   // Demo wallets configuration
   const demoWallets: DemoWallet[] = [
@@ -162,26 +188,77 @@ const checkItemCode = async () => {
     return;
   }
 
-  setIsChecking(true);
   try {
-    // Simulating item details (replace with actual contract call when connected to blockchain)
-    const simulatedValue = {
-      path: "Path to manufacturer -> Middleman -> Consumer",
-      description: "This is a description of the oil product.",
-      price: "$20.00"
-    };
+    // Try to ensure contract if signer exists
+    if (!contract && signer) {
+      const c = new ethers.Contract(contractAddress, Oilube.abi, signer) as OilubeInterface;
+      setContract(c);
+    }
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setItemDetails(simulatedValue); // Show the details in the modal
+    const rawId = searchTerm.trim();
+    const matched = oilProducts.find(p => p.id === rawId || p.blockchainId === rawId);
+    const resolvedBlockchainId = matched?.blockchainId || rawId;
+
+    let feeEth: string | undefined = undefined;
+    try {
+      if (contract) {
+        const feeWeiFetched = await contract.fee();
+        feeEth = ethers.formatEther(feeWeiFetched);
+      }
+    } catch (_) {
+      feeEth = undefined;
+    }
+
+    setPendingCheck({
+      inputId: rawId,
+      resolvedBlockchainId,
+      feeEth
+    });
+    setIsPayModalOpen(true);
   } catch (error) {
-    console.error("Error checking item code:", error);
-    alert("Failed to check item code.");
-  } finally {
-    setIsChecking(false);
+    console.error("Error preparing pay-to-view:", error);
+    alert("Unable to prepare payment. Please try again.");
   }
 };
+
+  const confirmPayAndShowDetails = async () => {
+    if (!pendingCheck) return;
+    setIsPaying(true);
+    try {
+      let c = contract;
+      let w = walletAddress;
+      if (!w || !c) {
+        // Attempt auto-connect
+        if (!window.ethereum) throw new Error('MetaMask not available');
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        if (!accounts || accounts.length === 0) throw new Error('No accounts');
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const s = await provider.getSigner();
+        const addr = await s.getAddress();
+        setSigner(s);
+        setWalletAddress(addr);
+        c = new ethers.Contract(contractAddress, Oilube.abi, s) as OilubeInterface;
+        setContract(c);
+      }
+      if (!c) throw new Error('Contract not ready');
+
+      const { path, feeWei } = await payAndFetchDetails(c as OilubeInterface, pendingCheck.resolvedBlockchainId);
+      const feeEthDisplay = ethers.formatEther(feeWei);
+
+      setIsPayModalOpen(false);
+      setPendingCheck(null);
+      setItemDetails({
+        path: path.length ? path.join(' -> ') : 'No path recorded yet',
+        description: `Access granted via on-chain payment (${feeEthDisplay} ETH).`,
+        price: `${feeEthDisplay} ETH`
+      });
+    } catch (error) {
+      console.error("Payment failed:", error);
+      alert("Payment failed. Please try again.");
+    } finally {
+      setIsPaying(false);
+    }
+  };
 
   // Function to check user role
   const checkUserRole = async (address: string) => {
@@ -729,15 +806,16 @@ const checkItemCode = async () => {
     }
 
     let pathRecord: string[] = [];
-    
-    // Try to get path record from blockchain if blockchainId exists
+
+    // Enforce payment if product has a blockchainId and contract is available
     if (product.blockchainId && contract) {
       try {
-        const pathResult = await checkProductPath(product.blockchainId);
-        pathRecord = pathResult || [];
+        const { path } = await payAndFetchDetails(contract, product.blockchainId);
+        pathRecord = path || [];
       } catch (error) {
-        console.error("Error fetching path record:", error);
-        pathRecord = [];
+        console.error("Payment required to view product details:", error);
+        alert("Payment required to view this product's details. Please try again.");
+        return;
       }
     }
 
@@ -754,8 +832,6 @@ Created: ${product.createdAt}
 
 🔗 Supply Chain Path:
 ${pathRecord && pathRecord.length > 0 ? pathRecord.join(' -> ') : 'No path recorded yet'}
-
-${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet stored on blockchain'}
     `;
     
     alert(productDetails);
@@ -1041,6 +1117,28 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
                   <p><strong>Path:</strong> {itemDetails.path}</p>
                   <p><strong>Description:</strong> {itemDetails.description}</p>
                   <p><strong>Price:</strong> {itemDetails.price}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Confirm Pay-to-View Modal */}
+          {isPayModalOpen && pendingCheck && (
+            <div className="modal-overlay" onClick={() => !isPaying && setIsPayModalOpen(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <button className="close-btn" onClick={() => !isPaying && setIsPayModalOpen(false)}>&times;</button>
+                <h2>Confirm Product Check</h2>
+                <div className="product-details">
+                  <p><strong>Product ID:</strong> {pendingCheck.inputId}</p>
+                  <p><strong>Blockchain ID:</strong> {pendingCheck.resolvedBlockchainId}</p>
+                  <p><strong>Viewing Fee:</strong> {pendingCheck.feeEth} ETH</p>
+                  <p>This action will send an on-chain payment to view product details. Please confirm you’re checking the correct product ID.</p>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                  <button className="secondary-btn" onClick={() => setIsPayModalOpen(false)} disabled={isPaying}>Cancel</button>
+                  <button className="primary-btn" onClick={confirmPayAndShowDetails} disabled={isPaying}>
+                    {isPaying ? 'Paying...' : 'Confirm and Pay'}
+                  </button>
                 </div>
               </div>
             </div>
