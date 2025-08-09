@@ -110,12 +110,12 @@ function App() {
     price: ''
   });
 
-  // State for transfer product functionality
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [transferForm, setTransferForm] = useState({
-    productId: '',
-    newLocation: '',
-    details: ''
+
+
+  // State for receive product functionality (middleman)
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [receiveForm, setReceiveForm] = useState({
+    productId: ''
   });
 
   // Example history data
@@ -299,6 +299,30 @@ const checkItemCode = async () => {
       setUserProfile(newProfile);
       setUserRole(registrationForm.role);
       
+      // Enable demo mode to show role-specific dashboard
+      setIsDemoMode(true);
+      
+      // Create a demo wallet equivalent for the registered user
+      const registeredWallet = {
+        address: walletAddress,
+        name: registrationForm.name,
+        role: registrationForm.role,
+        privateKey: undefined
+      };
+      setSelectedDemoWallet(registeredWallet);
+      
+      // Load demo data for the registered role
+      loadDemoData(registrationForm.role);
+      
+      // Load products from localStorage if any exist
+      if (walletAddress) {
+        const storedProducts = localStorage.getItem(`oilProducts_${walletAddress}`);
+        if (storedProducts) {
+          const products = JSON.parse(storedProducts);
+          setOilProducts(products);
+        }
+      }
+      
       // Close modal and reset form
       setIsRegistrationModalOpen(false);
       setRegistrationForm({
@@ -307,7 +331,7 @@ const checkItemCode = async () => {
         location: ''
       });
       
-      alert("Registration successful! Your role has been set to " + registrationForm.role);
+      alert(`✅ Registration successful!\n\nYou are now logged in as: ${registrationForm.name}\nRole: ${registrationForm.role}\n\nYou will now see your role-specific dashboard with available functions.`);
       
     } catch (error) {
       console.error("Error registering user:", error);
@@ -342,7 +366,19 @@ const checkItemCode = async () => {
             setContract(contractInstance);
             
             // Check user role (this will also check localStorage)
-            await checkUserRole(walletAddress);
+            const detectedRole = await checkUserRole(walletAddress);
+            
+            // If user has a role, load their products and show dashboard
+            if (detectedRole !== 'none') {
+              const storedProducts = localStorage.getItem(`oilProducts_${walletAddress}`);
+              if (storedProducts) {
+                const products = JSON.parse(storedProducts);
+                setOilProducts(products);
+              } else {
+                // Load demo data for their role if no products exist
+                loadDemoData(detectedRole);
+              }
+            }
           }
         } catch (error) {
           console.error("Account access failed:", error);
@@ -439,6 +475,18 @@ const checkItemCode = async () => {
           const userRoleResult = await checkUserRole(walletAddress);
           console.log("User role:", userRoleResult);
           
+          // If user has a role, load their products
+          if (userRoleResult !== 'none') {
+            const storedProducts = localStorage.getItem(`oilProducts_${walletAddress}`);
+            if (storedProducts) {
+              const products = JSON.parse(storedProducts);
+              setOilProducts(products);
+            } else {
+              // Load demo data for their role if no products exist
+              loadDemoData(userRoleResult);
+            }
+          }
+          
           // Close modal
           setIsWalletModalOpen(false);
           
@@ -502,20 +550,10 @@ const checkItemCode = async () => {
 
   // Role-specific action handlers
   const handleManufacturerAction = () => {
-    if (!contract || !walletAddress) {
-      alert("Please connect your wallet first.");
-      return;
-    }
-    alert("Manufacturer action: Create new product instance. This feature will be implemented soon!");
+    handleCreateProduct();
   };
 
-  const handleMiddlemanAction = () => {
-    if (!contract || !walletAddress) {
-      alert("Please connect your wallet first.");
-      return;
-    }
-    alert("Middleman action: Transfer product. This feature will be implemented soon!");
-  };
+
 
   const handleConsumerAction = () => {
     if (!contract || !walletAddress) {
@@ -724,122 +762,186 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
   };
 
   const handleCreateProduct = () => {
-    if (!isDemoMode || selectedDemoWallet?.role !== 'manufacturer') {
+    console.log("handleCreateProduct called");
+    const currentRole = selectedDemoWallet?.role || userRole;
+    console.log("Current role:", currentRole);
+    
+    if (currentRole !== 'manufacturer') {
       alert("This action is only available for manufacturer accounts.");
       return;
     }
+    if (!isConnected) {
+      alert("Please connect your wallet first.");
+      return;
+    }
+    
+    console.log("Opening product modal...");
     setIsProductModalOpen(true);
+    alert("Product creation modal should now be open!"); // Debug alert
   };
 
-  const handleTransferProduct = () => {
-    if (!isDemoMode || selectedDemoWallet?.role !== 'middleman') {
+
+
+  const handleReceiveProduct = () => {
+    const currentRole = selectedDemoWallet?.role || userRole;
+    if (currentRole !== 'middleman') {
       alert("This action is only available for middleman accounts.");
       return;
     }
-    setIsTransferModalOpen(true);
+    if (!isConnected) {
+      alert("Please connect your wallet first.");
+      return;
+    }
+    setIsReceiveModalOpen(true);
   };
 
-  const handleSubmitTransfer = async () => {
-    if (!transferForm.productId.trim() || !transferForm.newLocation.trim()) {
-      alert("Please fill in product ID and new location.");
+  const handleSubmitReceive = async () => {
+    if (!receiveForm.productId.trim()) {
+      alert("Please enter a product ID.");
       return;
     }
 
     try {
-      // Find the product by ID (check both local ID and blockchain ID)
-      let productToTransfer = oilProducts.find(p => 
-        p.id === transferForm.productId || p.blockchainId === transferForm.productId
-      );
-
-      if (!productToTransfer) {
-        alert("Product not found. Please check the product ID.");
-        return;
-      }
-
-      // Check if product is in manufactured status (can be transferred)
-      if (productToTransfer.status !== 'manufactured') {
-        alert("This product cannot be transferred. Only manufactured products can be transferred.");
-        return;
-      }
-
-      console.log("Transferring product:", productToTransfer);
-
-      // Update product details
-      const updatedProduct: OilProduct = {
-        ...productToTransfer,
-        location: transferForm.newLocation,
-        status: 'transferred' as const,
-        description: transferForm.details || productToTransfer.description,
-        pathRecord: [
-          ...(productToTransfer.pathRecord || []),
-          `${selectedDemoWallet?.name || 'Middleman'} - ${transferForm.newLocation}`
-        ]
+      // Get current wallet address and user details
+      const currentWalletAddress = walletAddress || selectedDemoWallet?.address;
+      const currentUserProfile = userProfile || {
+        role: selectedDemoWallet?.role || 'middleman',
+        name: selectedDemoWallet?.name || 'Unknown Middleman',
+        location: 'Unknown Location',
+        address: currentWalletAddress || ''
       };
 
-      // Update blockchain if contract is available
-      if (contract && productToTransfer.blockchainId) {
+      // Store the product reception data
+      const receptionData = {
+        productId: receiveForm.productId,
+        receivedBy: {
+          walletAddress: currentWalletAddress,
+          name: currentUserProfile.name,
+          role: currentUserProfile.role,
+          location: currentUserProfile.location
+        },
+        receivedAt: new Date().toISOString(),
+        status: 'received_by_middleman'
+      };
+
+      // Save to localStorage for persistence
+      const receptionKey = `product_reception_${receiveForm.productId}`;
+      localStorage.setItem(receptionKey, JSON.stringify(receptionData));
+
+      // Also save to a general list of received products for this wallet
+      const walletReceptionsKey = `wallet_receptions_${currentWalletAddress}`;
+      const existingReceptions = JSON.parse(localStorage.getItem(walletReceptionsKey) || '[]');
+      existingReceptions.push(receptionData);
+      localStorage.setItem(walletReceptionsKey, JSON.stringify(existingReceptions));
+
+      // Try to update blockchain if contract is available and product exists
+      if (contract && receiveForm.productId) {
         try {
-          console.log("Updating product on blockchain...");
-          const success = await contract.Transfer(walletAddress || selectedDemoWallet?.address || '', productToTransfer.blockchainId);
+          console.log("Attempting to receive product on blockchain...");
+          const success = await contract.Transfer(currentWalletAddress || '', receiveForm.productId);
           
           if (!success) {
-            console.warn("Blockchain transfer failed, but continuing with local update");
+            console.warn("Blockchain transfer failed, but local storage updated");
+          } else {
+            console.log("Product successfully received on blockchain");
           }
         } catch (error) {
           console.error("Error updating blockchain:", error);
-          alert("Warning: Product transferred locally but blockchain update failed.");
+          // Continue with local storage even if blockchain fails
         }
       }
 
-      // Update local state
-      const updatedProducts = oilProducts.map(p => 
-        p.id === productToTransfer!.id || p.blockchainId === productToTransfer!.blockchainId 
-          ? updatedProduct 
-          : p
-      );
-
-      setOilProducts(updatedProducts);
-
-      // Save to localStorage
-      if (walletAddress || selectedDemoWallet?.address) {
-        const address = walletAddress || selectedDemoWallet?.address;
-        localStorage.setItem(`oilProducts_${address}`, JSON.stringify(updatedProducts));
-      }
-
       // Reset form and close modal
-      setTransferForm({ productId: '', newLocation: '', details: '' });
-      setIsTransferModalOpen(false);
+      setReceiveForm({ productId: '' });
+      setIsReceiveModalOpen(false);
 
-      alert(`✅ Product transferred successfully!\n\n📦 Product: ${updatedProduct.name}\n📍 New Location: ${updatedProduct.location}\n📝 Details: ${updatedProduct.description}\n🔄 Status: ${updatedProduct.status}`);
+      alert(`✅ Product received successfully!\n\n📦 Product ID: ${receiveForm.productId}\n👤 Received by: ${currentUserProfile.name}\n📍 Wallet Address: ${currentWalletAddress}\n🏢 Role: ${currentUserProfile.role}\n📍 Location: ${currentUserProfile.location}\n\n💾 All data has been stored locally and includes your complete user details.`);
 
     } catch (error) {
-      console.error("Error transferring product:", error);
-      alert("Failed to transfer product. Please try again.");
+      console.error("Error receiving product:", error);
+      alert("Failed to receive product. Please try again.");
     }
   };
 
+
+
   const handlePurchaseProduct = () => {
-    if (!isDemoMode || selectedDemoWallet?.role !== 'consumer') {
+    const currentRole = selectedDemoWallet?.role || userRole;
+    if (currentRole !== 'consumer') {
       alert("This action is only available for consumer accounts.");
+      return;
+    }
+    if (!isConnected) {
+      alert("Please connect your wallet first.");
       return;
     }
     alert("Purchase product functionality will be implemented soon!");
   };
 
   const handleSubmitProduct = async () => {
+    alert("Create Product button clicked!"); // Debug alert
+    console.log("handleSubmitProduct called");
+    console.log("Product form data:", productForm);
+    
     if (!productForm.name.trim() || !productForm.description.trim() || 
         !productForm.location.trim() || !productForm.price.trim()) {
       alert("Please fill in all fields.");
       return;
     }
 
-    if (!contract || !walletAddress) {
+    console.log("Form validation passed");
+    console.log("Contract available:", !!contract);
+    console.log("Wallet address:", walletAddress);
+
+    if (!walletAddress) {
       alert("Please connect your wallet first.");
       return;
     }
 
+    // For non-blockchain testing, we can create products locally
+    if (!contract) {
+      console.log("No contract available, creating product locally only");
+      
+      try {
+        // Create local product object without blockchain integration
+        const newProduct: OilProduct = {
+          id: `OIL${String(oilProducts.length + 1).padStart(3, '0')}`,
+          name: productForm.name,
+          description: productForm.description,
+          location: productForm.location,
+          manufacturer: selectedDemoWallet?.name || userProfile?.name || "Unknown Manufacturer",
+          price: productForm.price,
+          status: "manufactured",
+          createdAt: new Date().toISOString().split('T')[0],
+          blockchainId: undefined, // No blockchain ID for local-only products
+          pathRecord: []
+        };
+
+        console.log("Creating local product:", newProduct);
+
+        setOilProducts(prev => [...prev, newProduct]);
+        setProductForm({ name: '', description: '', location: '', price: '' });
+        setIsProductModalOpen(false);
+        
+        // Save to localStorage for persistence
+        if (walletAddress) {
+          const updatedProducts = [...oilProducts, newProduct];
+          localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
+        }
+        
+        alert(`✅ Product Created Successfully (Local Only)!\n\n📋 Product Details:\n- Name: ${productForm.name}\n- Description: ${productForm.description}\n- Location: ${productForm.location}\n- Price: ${productForm.price}\n- Manufacturer: ${newProduct.manufacturer}\n\n⚠️ Note: Product created locally. Blockchain connection not available.`);
+        
+        return;
+      } catch (error) {
+        console.error("Error creating local product:", error);
+        alert("Failed to create product locally. Please try again.");
+        return;
+      }
+    }
+
     try {
       console.log("Creating product on blockchain...");
+      console.log("Contract methods available:", Object.getOwnPropertyNames(contract));
       
       // Create a comprehensive product data string that includes all information
       // This will be stored in the blockchain as the product name
@@ -848,7 +950,7 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
         description: productForm.description,
         location: productForm.location,
         price: productForm.price,
-        manufacturer: selectedDemoWallet?.name || "Oil Factory Ltd",
+        manufacturer: selectedDemoWallet?.name || userProfile?.name || "Unknown Manufacturer",
         timestamp: new Date().toISOString()
       };
       
@@ -857,9 +959,11 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
       
       console.log("Product data to be stored:", productData);
       console.log("Structured product name for blockchain:", productNameForBlockchain);
+      console.log("Attempting to call NewInstance with:", walletAddress, productNameForBlockchain);
       
       // Create product on blockchain using NewInstance with structured data
       const productId = await contract.NewInstance(walletAddress, productNameForBlockchain);
+      console.log("Raw product ID returned from blockchain:", productId);
       
       console.log("Product created on blockchain with ID:", productId);
       
@@ -869,7 +973,7 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
         name: productForm.name,
         description: productForm.description,
         location: productForm.location,
-        manufacturer: selectedDemoWallet?.name || "Oil Factory Ltd",
+        manufacturer: selectedDemoWallet?.name || userProfile?.name || "Unknown Manufacturer",
         price: productForm.price,
         status: "manufactured",
         createdAt: new Date().toISOString().split('T')[0],
@@ -887,16 +991,16 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
         localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
       }
       
-      alert(`✅ 产品创建成功！\n\n📋 产品详情：\n- 名称: ${productForm.name}\n- 描述: ${productForm.description}\n- 位置: ${productForm.location}\n- 价格: ${productForm.price}\n\n🔗 区块链信息：\n- 产品ID: ${productId}\n- 制造商: ${selectedDemoWallet?.name || "Oil Factory Ltd"}\n\n💾 所有数据已自动存储到区块链上！`);
+      alert(`✅ Product Created Successfully!\n\n📋 Product Details:\n- Name: ${productForm.name}\n- Description: ${productForm.description}\n- Location: ${productForm.location}\n- Price: ${productForm.price}\n\n🔗 Blockchain Information:\n- Product ID: ${productId}\n- Manufacturer: ${selectedDemoWallet?.name || userProfile?.name || "Unknown Manufacturer"}\n\n💾 All data has been automatically stored on the blockchain!`);
       
     } catch (error) {
       console.error("Error creating product on blockchain:", error);
       
       // Check if it's a role error
       if (error instanceof Error && error.message.includes("Manufacturer")) {
-        alert("❌ 错误：只有制造商可以创建产品。请确保您使用的是制造商钱包连接。");
+        alert("❌ Error: Only manufacturers can create products. Please ensure you are using a manufacturer wallet connection.");
       } else {
-        alert("❌ 在区块链上创建产品失败。请重试。\n\n错误详情：" + (error instanceof Error ? error.message : "未知错误"));
+        alert("❌ Failed to create product on blockchain. Please try again.\n\nError details: " + (error instanceof Error ? error.message : "Unknown error"));
       }
     }
   };
@@ -974,9 +1078,9 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
                     )}
                     
                     {userRole === 'middleman' && (
-                      <button className="action-btn middleman-btn" onClick={handleMiddlemanAction}>
-                        <span>🔄</span>
-                        <span>Transfer Product</span>
+                      <button className="action-btn middleman-btn" onClick={handleReceiveProduct}>
+                        <span>📥</span>
+                        <span>Receive Product</span>
                       </button>
                     )}
                     
@@ -1049,19 +1153,19 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
       </section>
 
       {/* Role-Specific Dashboard */}
-      {isConnected && isDemoMode && selectedDemoWallet && (
+      {isConnected && ((isDemoMode && selectedDemoWallet) || (!isDemoMode && userRole !== 'none')) && (
         <section className="role-dashboard">
           <div className="container">
             <div className="dashboard-header">
-              <h2>Welcome, {selectedDemoWallet.name}</h2>
+              <h2>Welcome, {selectedDemoWallet?.name || userProfile?.name || 'User'}</h2>
               <div className="dashboard-subtitle">
-                <span className="role-badge dashboard-role-badge">{selectedDemoWallet.role}</span>
-                <span className="dashboard-address">{selectedDemoWallet.address}</span>
+                <span className="role-badge dashboard-role-badge">{selectedDemoWallet?.role || userRole}</span>
+                <span className="dashboard-address">{selectedDemoWallet?.address || walletAddress}</span>
               </div>
             </div>
 
             {/* Manufacturer Dashboard */}
-            {selectedDemoWallet.role === 'manufacturer' && (
+            {(selectedDemoWallet?.role === 'manufacturer' || userRole === 'manufacturer') && (
               <div className="manufacturer-dashboard">
                 <div className="dashboard-actions">
                   <button className="action-btn manufacturer-btn" onClick={handleCreateProduct}>
@@ -1093,39 +1197,45 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
             )}
 
             {/* Middleman Dashboard */}
-            {selectedDemoWallet.role === 'middleman' && (
+            {(selectedDemoWallet?.role === 'middleman' || userRole === 'middleman') && (
               <div className="middleman-dashboard">
                 <div className="dashboard-actions">
-                  <button className="action-btn middleman-btn" onClick={handleTransferProduct}>
-                    <span>🔄</span>
-                    <span>Transfer Product</span>
+                  <button className="action-btn middleman-btn" onClick={handleReceiveProduct}>
+                    <span>📥</span>
+                    <span>Receive Product</span>
                   </button>
                 </div>
                 
                 <div className="products-section">
-                  <h3>Available for Transfer</h3>
+                  <h3>Products I Can Receive</h3>
                   <div className="products-grid">
-                    {oilProducts.map((product) => (
+                    {oilProducts.filter(p => p.status === 'manufactured').map((product) => (
                       <div key={product.id} className="product-card" onClick={() => viewProductDetails(product)}>
                         <div className="product-header">
                           <h4>{product.name}</h4>
-                          <span className="product-status transferred">{product.status}</span>
+                          <span className="product-status manufactured">{product.status}</span>
                         </div>
                         <p className="product-description">{product.description}</p>
                         <div className="product-details">
                           <span><strong>From:</strong> {product.manufacturer}</span>
                           <span><strong>Location:</strong> {product.location}</span>
                           <span><strong>Price:</strong> {product.price}</span>
+                          <span><strong>Product ID:</strong> {product.id}</span>
                         </div>
                       </div>
                     ))}
+                    {oilProducts.filter(p => p.status === 'manufactured').length === 0 && (
+                      <div className="no-products" style={{gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: '#64748b'}}>
+                        No manufactured products available to receive. Use the "Receive Product" button above to receive a product by entering its ID.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
             {/* Consumer Dashboard */}
-            {selectedDemoWallet.role === 'consumer' && (
+            {(selectedDemoWallet?.role === 'consumer' || userRole === 'consumer') && (
               <div className="consumer-dashboard">
                 <div className="dashboard-actions">
                   <button className="action-btn consumer-btn" onClick={handlePurchaseProduct}>
@@ -1347,61 +1457,35 @@ ${product.blockchainId ? `Blockchain ID: ${product.blockchainId}` : 'Not yet sto
         </div>
       </div>
 
-      {/* Transfer Product Modal */}
-      <div className={`transfer-modal ${isTransferModalOpen ? 'active' : ''}`}>
+
+
+      {/* Receive Product Modal */}
+      <div className={`receive-modal ${isReceiveModalOpen ? 'active' : ''}`}>
         <div className="modal-content">
           <div className="modal-header">
-            <h2>Transfer Product</h2>
-            <button className="close-btn" onClick={() => setIsTransferModalOpen(false)}>&times;</button>
+            <h2>Receive Product</h2>
+            <button className="close-btn" onClick={() => setIsReceiveModalOpen(false)}>&times;</button>
           </div>
-          <div className="transfer-form">
-            {/* Show available products for transfer */}
-            <div className="form-group">
-              <label>Available Products for Transfer:</label>
-              <div className="available-products">
-                {oilProducts.filter(p => p.status === 'manufactured').map((product) => (
-                  <div key={product.id} className="available-product-item" 
-                       onClick={() => setTransferForm({...transferForm, productId: product.id})}>
-                    <strong>{product.id}</strong> - {product.name} ({product.location})
-                  </div>
-                ))}
-                {oilProducts.filter(p => p.status === 'manufactured').length === 0 && (
-                  <div className="no-products">No manufactured products available for transfer.</div>
-                )}
-              </div>
-            </div>
+          <div className="receive-form">
             <div className="form-group">
               <label>Product ID:</label>
               <input
                 type="text"
                 placeholder="Enter product ID (e.g., OIL001) or blockchain ID"
-                value={transferForm.productId}
-                onChange={(e) => setTransferForm({ ...transferForm, productId: e.target.value })}
+                value={receiveForm.productId}
+                onChange={(e) => setReceiveForm({ ...receiveForm, productId: e.target.value })}
                 className="form-input"
               />
             </div>
-            <div className="form-group">
-              <label>New Location:</label>
-              <input
-                type="text"
-                placeholder="Enter new location (e.g., Singapore Warehouse)"
-                value={transferForm.newLocation}
-                onChange={(e) => setTransferForm({ ...transferForm, newLocation: e.target.value })}
-                className="form-input"
-              />
+            <div className="user-info-display">
+              <h4>Your Details (will be stored with the product):</h4>
+              <p><strong>Name:</strong> {userProfile?.name || selectedDemoWallet?.name || 'Unknown'}</p>
+              <p><strong>Wallet Address:</strong> {walletAddress || selectedDemoWallet?.address || 'Not connected'}</p>
+              <p><strong>Role:</strong> {userProfile?.role || selectedDemoWallet?.role || 'middleman'}</p>
+              <p><strong>Location:</strong> {userProfile?.location || 'Unknown Location'}</p>
             </div>
-            <div className="form-group">
-              <label>Transfer Details (optional):</label>
-              <textarea
-                placeholder="Enter additional details about the transfer (e.g., transportation method, expected arrival date)"
-                value={transferForm.details}
-                onChange={(e) => setTransferForm({ ...transferForm, details: e.target.value })}
-                className="form-input"
-                rows={3}
-              />
-            </div>
-            <button onClick={handleSubmitTransfer} className="submit-button">
-              Transfer Product
+            <button onClick={handleSubmitReceive} className="submit-button">
+              Receive Product
             </button>
           </div>
         </div>
