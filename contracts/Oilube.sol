@@ -41,6 +41,13 @@ contract Oilube {
 
 	mapping(string => mapping(string => uint)) productCounts;
 
+	event displayProductDetail(string mName, 
+	string pName, 
+	uint256 creationTime, 
+	address curHolder, 
+	bool isDelivered, 
+	string[] path);
+
 	modifier onlyOwner() 
 	{
 	require(msg.sender == owner, "Only owner can call this function");
@@ -95,7 +102,7 @@ contract Oilube {
 		}
 	}
 
-	function Purchase(address acceptAddress, bytes32 pID, string memory location) public payable returns (bool) 
+	function Purchase(address acceptAddress, bytes32 pID, string memory location) public returns (bool) 
 	{
 		if (products[pID].isDelivered)
 		{
@@ -110,10 +117,19 @@ contract Oilube {
 		}
 	}
 
-	function Payment() public payable
+	function PayToView(bytes32 pID) public payable returns (productDetail memory)
 	{
 		require(msg.value == fee, "Incorrect fee amount");
-		// put display here?
+		
+		productDetail memory temp = products[pID];
+		emit displayProductDetail(temp.manufacturerName, 
+		temp.productName, 
+		temp.creationTime, 
+		temp.currentHolder, 
+		temp.isDelivered, 
+		temp.pathRecord);
+
+		return temp;
 	} 
 
 	function Withdraw() public onlyOwner 
@@ -133,12 +149,12 @@ contract Oilube {
 		return testing_lastPID;
 	}
 
-	function checkRole(address add) public view returns (string memory)
+	function CheckRole(address add) public view returns (string memory)
 	{
 		return accounts[add].role;
 	}
 
-	function checkPath(bytes32 pID) public view returns (string[] memory)
+	function CheckPath(bytes32 pID) public view returns (string[] memory)
 	{
 		return products[pID].pathRecord;
 	}
