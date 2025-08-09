@@ -6,6 +6,7 @@ require("@nomicfoundation/hardhat-verify");
 require("dotenv").config();
 
 const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL;
+const OPSEPOLIA_RPC_URL = process.env.OPSEPOLIA_RPC_URL;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 
@@ -16,12 +17,29 @@ module.exports = {
     sepolia: {
       url: SEPOLIA_RPC_URL,
       accounts: [PRIVATE_KEY]
+    },
+	opsepolia: {
+      url: OPSEPOLIA_RPC_URL,
+      accounts: [PRIVATE_KEY]
     }
   },
   etherscan: {
-	apiKey: ETHERSCAN_API_KEY
+	apiKey: ETHERSCAN_API_KEY,
+	customChains: [
+      {
+        network: "opsepolia",
+        chainId: 11155420,
+        urls: {
+          apiURL: "https://api-sepolia-optimism.etherscan.io/api",
+          browserURL: "https://sepolia-optimism.etherscan.io/"
+        }
+      }
+    ]
   }
 };
+
+
+// config for testing in Ganache
 
 // const config: HardhatUserConfig = {
 //   solidity: "0.8.28",
