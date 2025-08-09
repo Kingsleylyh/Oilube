@@ -11,6 +11,8 @@ contract test {
     message = "Hello World!";
   }
   
+	bytes32 testing_lastPID;
+
 	address public owner;
 
 	uint256 public constant fee = 0.01 ether;
@@ -62,8 +64,8 @@ contract test {
 		}
 		else
 		{
-			string[] memory initPath = new string[](0);
-			initPath[0] = string.concat(accounts[mAddress].name, ",", accounts[mAddress].location, ",", block.timestamp.toString());
+			string[] memory initPath = new string[](1);
+			initPath[0] = string.concat(accounts[mAddress].role, ",", accounts[mAddress].name, ",", accounts[mAddress].location, ",", block.timestamp.toString());
 			productDetail memory pNew = productDetail(accounts[mAddress].name, 
 			pName, 
 			block.timestamp, 
@@ -74,6 +76,7 @@ contract test {
 			bytes32 idNew = keccak256(abi.encodePacked(pNew.productName, pNew.creationTime, (productCounts[accounts[mAddress].name][pName] + 1)));
 			products[idNew] = pNew;
 			productCounts[accounts[mAddress].name][pName]++;
+			testing_lastPID = idNew;
 			return idNew;
 		}
 	}
@@ -87,12 +90,12 @@ contract test {
 		else
 		{
 			products[pID].currentHolder = acceptAddress;
-			products[pID].pathRecord.push(string.concat(accounts[acceptAddress].role, ",", accounts[acceptAddress].location,",", block.timestamp.toString()));
+			products[pID].pathRecord.push(string.concat(accounts[acceptAddress].role, ",", accounts[acceptAddress].name, ",", accounts[acceptAddress].location,",", block.timestamp.toString()));
 			return true;
 		}
 	}
 
-	function Purchase(address acceptAddress, bytes32 pID) public payable returns (bool) 
+	function Purchase(address acceptAddress, bytes32 pID, string memory location) public payable returns (bool) 
 	{
 		if (products[pID].isDelivered)
 		{
@@ -102,7 +105,7 @@ contract test {
 		{
 			products[pID].currentHolder = acceptAddress;
 			products[pID].isDelivered = true;
-			products[pID].pathRecord.push(string.concat("Consumer,", accounts[acceptAddress].location,",", block.timestamp.toString()));
+			products[pID].pathRecord.push(string.concat("Consumer,Anonymous,", location, ",", block.timestamp.toString()));
 			return true;
 		}
 	}
@@ -122,4 +125,19 @@ contract test {
         (bool success, ) = owner.call{value: balance}("");
         require(success, "Withdrawal failed");
     }
+
+	function CheckID() public view returns (bytes32) 
+	{
+		return testing_lastPID;
+	}
+
+	function checkRole(address add) public view returns (string memory)
+	{
+		return accounts[add].role;
+	}
+
+	function checkPath(bytes32 pID) public view returns (string[] memory)
+	{
+		return products[pID].pathRecord;
+	}
 }
