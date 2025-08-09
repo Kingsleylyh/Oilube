@@ -18,7 +18,7 @@ interface OilubeCustomMethods {
 	CheckPath: (pID: string) => Promise<string[]>;
 
 	Withdraw: () => Promise<ethers.TransactionResponse>;
-	Payment: () => Promise<ethers.TransactionResponse>;
+	PayToView: () => Promise<ethers.TransactionResponse>;
 
 	Register: (address: string, role: string, name: string, location: string) => Promise<boolean>;
 	NewInstance: (address: string, pName: string) => Promise<string>;
