@@ -379,7 +379,61 @@ const checkItemCode = async () => {
     }
   };
 
-  // Function to register user
+  // Function to register user (simple version without wallet requirement)
+  const registerUserSimple = () => {
+    if (!registrationForm.name.trim() || !registrationForm.location.trim()) {
+      showToast('Please fill in all fields.', 'error');
+      return;
+    }
+
+    try {
+      console.log("Registering user with details:", {
+        role: registrationForm.role,
+        name: registrationForm.name,
+        location: registrationForm.location
+      });
+
+      // Generate a simple local address for demo purposes
+      const localAddress = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Store registration data locally
+      const newProfile: UserProfile = {
+        role: registrationForm.role,
+        name: registrationForm.name,
+        location: registrationForm.location,
+        address: localAddress
+      };
+      
+      // Save to localStorage
+      localStorage.setItem(`userProfile_${localAddress}`, JSON.stringify(newProfile));
+      
+      // Update state
+      setUserProfile(newProfile);
+      setUserRole(registrationForm.role);
+      setWalletAddress(localAddress);
+      setIsConnected(true);
+      
+      // Load demo data for the registered role
+      loadDemoData(registrationForm.role);
+      
+      // Close modal and reset form
+      setIsRegistrationModalOpen(false);
+      setRegistrationForm({
+        role: 'manufacturer',
+        name: '',
+        location: ''
+      });
+      
+      // Show success popup
+      showToast(`Role registered successfully! Welcome ${registrationForm.name} (${registrationForm.role}).`, 'success');
+      
+    } catch (error) {
+      console.error("Error registering user:", error);
+      showToast('Failed to register user. Please try again.', 'error');
+    }
+  };
+
+  // Function to register user (original version with wallet requirement)
   const registerUser = async () => {
     if (!walletAddress) {
       showToast('Please connect your wallet first.', 'error');
@@ -661,10 +715,6 @@ const checkItemCode = async () => {
 
 
   const handleConsumerAction = () => {
-    if (!contract || !walletAddress) {
-      showToast('Please connect your wallet first.', 'error');
-      return;
-    }
     showToast('Purchase product feature coming soon.', 'info');
   };
 
@@ -864,16 +914,12 @@ const checkItemCode = async () => {
       showToast('Only manufacturers can create products.', 'error');
       return;
     }
-    if (!isConnected) {
-      showToast('Please connect your wallet first.', 'error');
-      return;
-    }
     
     console.log("Opening product modal...");
     // Prefill manufacturer address and today's date
     setProductForm(prev => ({
       ...prev,
-      manufacturerAddress: walletAddress || prev.manufacturerAddress,
+      manufacturerAddress: walletAddress || userProfile?.address || prev.manufacturerAddress,
       manufacturingDate: new Date().toISOString().slice(0, 10)
     }));
     setIsProductModalOpen(true);
@@ -886,10 +932,6 @@ const checkItemCode = async () => {
     const currentRole = selectedDemoWallet?.role || userRole;
     if (currentRole !== 'middleman') {
       showToast('Only middleman accounts can transfer products.', 'error');
-      return;
-    }
-    if (!isConnected) {
-      showToast('Please connect your wallet first.', 'error');
       return;
     }
     setIsReceiveModalOpen(true);
@@ -970,10 +1012,6 @@ const checkItemCode = async () => {
       showToast('Only consumers can purchase products.', 'error');
       return;
     }
-    if (!isConnected) {
-      showToast('Please connect your wallet first.', 'error');
-      return;
-    }
     showToast('Purchase product feature coming soon.', 'info');
   };
 
@@ -991,10 +1029,8 @@ const checkItemCode = async () => {
     console.log("Contract available:", !!contract);
     console.log("Wallet address:", walletAddress);
 
-    if (!walletAddress) {
-      showToast('Please connect your wallet first.', 'error');
-      return;
-    }
+    // Use local address if no wallet is connected
+    const currentAddress = walletAddress || userProfile?.address || `local_${Date.now()}`;
 
     // For non-blockchain testing, we can create products locally
     if (!contract) {
@@ -1022,10 +1058,8 @@ const checkItemCode = async () => {
         setIsProductModalOpen(false);
         
         // Save to localStorage for persistence
-        if (walletAddress) {
-          const updatedProducts = [...oilProducts, newProduct];
-          localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
-        }
+        const updatedProducts = [...oilProducts, newProduct];
+        localStorage.setItem(`oilProducts_${currentAddress}`, JSON.stringify(updatedProducts));
         
         showToast('Product created locally.', 'success');
         
@@ -1042,7 +1076,7 @@ const checkItemCode = async () => {
       console.log("Contract methods available:", Object.getOwnPropertyNames(contract));
       
       // Manufacturer address and manufacturing date are required
-      const mAddress = productForm.manufacturerAddress || walletAddress || '';
+      const mAddress = productForm.manufacturerAddress || currentAddress || '';
       if (!mAddress) {
         showToast('Manufacturer address is required.', 'error');
         return;
@@ -1083,10 +1117,8 @@ const checkItemCode = async () => {
       setIsProductModalOpen(false);
       
       // Save to localStorage for persistence
-      if (walletAddress) {
-        const updatedProducts = [...oilProducts, newProduct];
-        localStorage.setItem(`oilProducts_${walletAddress}`, JSON.stringify(updatedProducts));
-      }
+      const updatedProducts = [...oilProducts, newProduct];
+      localStorage.setItem(`oilProducts_${currentAddress}`, JSON.stringify(updatedProducts));
       
       showToast('Product created on-chain successfully.', 'success');
       
@@ -1102,12 +1134,7 @@ const checkItemCode = async () => {
     }
   };
 
-  // Enforce wallet connection on load
-  useEffect(() => {
-    if (!isConnected) {
-      setIsWalletModalOpen(true);
-    }
-  }, [isConnected]);
+  // No longer enforce wallet connection on load - users can register without wallet
 
   return (
     <div className="App">
@@ -1178,45 +1205,41 @@ const checkItemCode = async () => {
             </button>
             
             {/* Role-based actions */}
-            {isConnected && (
+            {userRole === 'none' ? (
+              <button 
+                className="register-btn" 
+                onClick={() => setIsRegistrationModalOpen(true)}
+              >
+                <span>📝</span>
+                <span>Register Role</span>
+              </button>
+            ) : (
               <>
-                {userRole === 'none' ? (
-                  <button 
-                    className="register-btn" 
-                    onClick={() => setIsRegistrationModalOpen(true)}
-                  >
-                    <span>📝</span>
-                    <span>Register Role</span>
+                <div className="role-display" data-role={userRole}>
+                  <span className="role-badge">{userRole}</span>
+                  <span className="user-name">{userProfile?.name || walletAddress?.substring(0, 8)}</span>
+                </div>
+                
+                {/* Role-specific actions */}
+                {userRole === 'manufacturer' && (
+                  <button className="action-btn manufacturer-btn" onClick={handleManufacturerAction}>
+                    <span>🏭</span>
+                    <span>Create Product</span>
                   </button>
-                ) : (
-                  <>
-                    <div className="role-display" data-role={userRole}>
-                      <span className="role-badge">{userRole}</span>
-                      <span className="user-name">{userProfile?.name || walletAddress?.substring(0, 8)}</span>
-                    </div>
-                    
-                    {/* Role-specific actions */}
-                    {userRole === 'manufacturer' && (
-                      <button className="action-btn manufacturer-btn" onClick={handleManufacturerAction}>
-                        <span>🏭</span>
-                        <span>Create Product</span>
-                      </button>
-                    )}
-                    
-                    {userRole === 'middleman' && (
-                      <button className="action-btn middleman-btn" onClick={handleReceiveProduct}>
-                        <span>📥</span>
-                        <span>Receive Product</span>
-                      </button>
-                    )}
-                    
-                    {userRole === 'consumer' && (
-                      <button className="action-btn consumer-btn" onClick={handleConsumerAction}>
-                        <span>🛒</span>
-                        <span>Purchase Product</span>
-                      </button>
-                    )}
-                  </>
+                )}
+                
+                {userRole === 'middleman' && (
+                  <button className="action-btn middleman-btn" onClick={handleReceiveProduct}>
+                    <span>📥</span>
+                    <span>Receive Product</span>
+                  </button>
+                )}
+                
+                {userRole === 'consumer' && (
+                  <button className="action-btn consumer-btn" onClick={handleConsumerAction}>
+                    <span>🛒</span>
+                    <span>Purchase Product</span>
+                  </button>
                 )}
               </>
             )}
@@ -1296,7 +1319,7 @@ const checkItemCode = async () => {
       </section>
 
       {/* Role-Specific Dashboard */}
-      {isConnected && ((isDemoMode && selectedDemoWallet) || (!isDemoMode && userRole !== 'none')) && (
+      {((isDemoMode && selectedDemoWallet) || (!isDemoMode && userRole !== 'none')) && (
         <section className="role-dashboard">
           <div className="container">
             <div className="dashboard-header">
@@ -1452,7 +1475,7 @@ const checkItemCode = async () => {
                 className="form-input"
               />
             </div>
-            <button onClick={registerUser} className="register-button">
+            <button onClick={registerUserSimple} className="register-button">
               Register Role
             </button>
           </div>
